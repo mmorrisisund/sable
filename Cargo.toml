@@ -1,0 +1,9 @@
+[package]
+name = "sable"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+env_logger = "0.11.11"
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/wgpui" }
+wgpu = "30.0.1"
