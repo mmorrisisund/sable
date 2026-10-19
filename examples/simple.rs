@@ -4,12 +4,8 @@ use gpui::{
     Application, Bounds, KeyBinding, Point, Size, WgpuSurfaceHandle, Window, WindowBounds,
     WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
 };
-use wgpu::{
-    Color, ColorTargetState, ColorWrites, Device, FragmentState, LoadOp, MultisampleState,
-    Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    ShaderModuleDescriptor, ShaderSource, StoreOp, TextureFormat, TextureView, VertexState,
-};
+use sable::{Renderer, RendererConfig, renderer::Camera};
+use wgpu::{Device, Queue, TextureFormat, TextureView};
 
 fn main() {
     env_logger::init();
@@ -29,11 +25,11 @@ fn main() {
             },
             |window, cx| {
                 let surface = window
-                    .create_wgpu_surface(1000, 100, wgpu::TextureFormat::Rgba8UnormSrgb)
+                    .create_wgpu_surface(1000, 800, wgpu::TextureFormat::Rgba8UnormSrgb)
                     .expect("wgpu not supported on this machine");
 
                 let now = Instant::now();
-                cx.new(|_| SimpleApp {
+                cx.new(|_| TriangleApp {
                     surface,
                     frame_count: 0,
                     last_fps_update: now,
@@ -47,7 +43,7 @@ fn main() {
 
 actions!(editor, [Quit]);
 
-struct SimpleApp {
+struct TriangleApp {
     surface: WgpuSurfaceHandle,
     frame_count: u32,
     last_fps_update: Instant,
@@ -55,7 +51,7 @@ struct SimpleApp {
     state: Option<AppState>,
 }
 
-impl Render for SimpleApp {
+impl Render for TriangleApp {
     fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
         if let Some((view, (w, h))) = self.surface.back_view_with_size() {
             let state = self.state.get_or_insert_with(|| {
@@ -107,106 +103,29 @@ impl Render for SimpleApp {
                             .left(px(8.0))
                             .text_color(rgb(0x00aaff))
                             .text_xl()
-                            .child(format!("FPS: {:.1} | SimpleApp", self.display_fps)),
+                            .child(format!("FPS: {:.1} | TriangleApp", self.display_fps)),
                     ),
             )
     }
 }
 
 struct AppState {
-    device: Device,
-    queue: Queue,
-    pipeline: RenderPipeline,
+    renderer: Renderer,
 }
 
 impl AppState {
-    fn new(device: Device, queue: Queue, _w: u32, _h: u32, color_format: TextureFormat) -> Self {
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: None,
-            source: ShaderSource::Wgsl(SHADER.into()),
-        });
+    fn new(device: Device, queue: Queue, w: u32, h: u32, color_format: TextureFormat) -> Self {
+        let config = RendererConfig {
+            width: w,
+            height: h,
+            color_format,
+        };
+        let renderer = Renderer::new(device, queue, config);
 
-        let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[],
-            immediate_size: 0,
-        });
-
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: None,
-            layout: Some(&layout),
-            vertex: VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            primitive: PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: MultisampleState::default(),
-            fragment: Some(FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: PipelineCompilationOptions::default(),
-                targets: &[Some(ColorTargetState {
-                    format: color_format,
-                    blend: None,
-                    write_mask: ColorWrites::all(),
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-
-        Self {
-            device,
-            queue,
-            pipeline,
-        }
+        Self { renderer }
     }
 
     fn render(&self, view: &TextureView) {
-        let mut encoder = self.device.create_command_encoder(&Default::default());
-
-        {
-            let mut rp = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("render pass"),
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Clear(Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-
-            rp.set_pipeline(&self.pipeline);
-            rp.draw(0..3, 0..1);
-        }
-
-        self.queue.submit(Some(encoder.finish()));
+        self.renderer.render(&Camera::default(), view);
     }
 }
-
-const SHADER: &str = r#"
-    @vertex
-    fn vs_main() -> @builtin(position) vec4f {
-        return vec4f(0.0);
-    }
-
-    @fragment
-    fn fs_main() -> @location(0) vec4f {
-        return vec4f(0.0);
-    }
-"#;

@@ -1,9 +1,41 @@
-[package]
-name = "sable"
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 
-[dependencies]
+[workspace]
+members = ["crates/*"]
+
+[workspace.dependencies]
+# Internal Crates
+sable_renderer = { path = "crates/sable-renderer", version = "0.1.0" }
+
+# math
+glam = "0.34.1"
+
+# utilities
+bytemuck = "1.25.2"
 env_logger = "0.11.11"
-gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/wgpui" }
+log = "0.4.34"
+
+# graphics
 wgpu = "30.0.1"
+
+# =============================================================================
+# Umbrella Crate — `Sable`
+# =============================================================================
+[package]
+name = "sable"
+version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "sable"
+path = "src/lib.rs"
+
+[dependencies]
+sable_renderer.workspace = true
+
+[dev-dependencies]
+env_logger.workspace = true
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/wgpui" }
+wgpu.workspace = true
