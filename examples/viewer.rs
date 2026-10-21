@@ -5,6 +5,7 @@ use gpui::{
     WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
 };
 use sable::{Renderer, RendererConfig};
+use sable_renderer::Mesh;
 use wgpu::{Device, Queue, TextureFormat, TextureView};
 
 fn main() {
@@ -124,7 +125,7 @@ impl AppState {
             color_format,
         };
         let mut renderer = Renderer::new(device.clone(), queue.clone(), config);
-        renderer.temp_add_tri();
+        renderer.add_mesh(Mesh::triangle());
 
         Self {
             device,

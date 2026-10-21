@@ -1,13 +1,15 @@
 use wgpu::{
-    Buffer, BufferDescriptor, BufferUsages, Color, ColorTargetState, ColorWrites, Device,
-    FragmentState, LoadOp, MultisampleState, Operations, PipelineCompilationOptions,
-    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, ShaderModuleDescriptor,
-    ShaderSource, StoreOp, TextureFormat, TextureView, VertexBufferLayout, VertexState,
-    vertex_attr_array,
+    Buffer, BufferUsages, Color, ColorTargetState, ColorWrites, Device, FragmentState, LoadOp,
+    MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
+    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, StoreOp, TextureFormat, TextureView, VertexState, include_wgsl,
+    util::{BufferInitDescriptor, DeviceExt},
 };
 
-use crate::camera::Camera;
+use crate::{
+    camera::Camera,
+    mesh::{Mesh, Vertex},
+};
 
 pub struct RendererConfig {
     pub width: u32,
@@ -19,16 +21,14 @@ pub struct Renderer {
     device: Device,
     queue: Queue,
     config: RendererConfig,
-    vertices: Buffer,
     pipeline: RenderPipeline,
+    mesh: Option<Mesh>,
+    v_buf: Option<Buffer>,
 }
 
 impl Renderer {
     pub fn new(device: Device, queue: Queue, config: RendererConfig) -> Self {
-        let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: None,
-            source: ShaderSource::Wgsl(SHADER.into()),
-        });
+        let shader = device.create_shader_module(include_wgsl!("shaders/basic.wgsl"));
 
         let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: None,
@@ -36,12 +36,6 @@ impl Renderer {
             immediate_size: 0,
         });
 
-        let v_attr = vertex_attr_array![0 => Float32x3];
-        let v_buf = VertexBufferLayout {
-            array_stride: size_of::<[f32; 3]>() as u64,
-            attributes: &v_attr,
-            step_mode: wgpu::VertexStepMode::Vertex,
-        };
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
             label: Some("triangle pipeline"),
             layout: Some(&layout),
@@ -49,7 +43,7 @@ impl Renderer {
                 module: &shader,
                 entry_point: Some("vs_main"),
                 compilation_options: Default::default(),
-                buffers: &[Some(v_buf)],
+                buffers: &[Some(Vertex::layout())],
             },
             primitive: PrimitiveState::default(),
             depth_stencil: None,
@@ -68,30 +62,27 @@ impl Renderer {
             cache: None,
         });
 
-        let vertices = device.create_buffer(&BufferDescriptor {
-            label: Some("Vertex buffer"),
-            size: size_of::<[[f32; 3]; 3]>() as u64,
-            usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
-            mapped_at_creation: false,
-        });
-
         Self {
             device,
             queue,
             config,
-            vertices,
             pipeline,
+            mesh: None,
+            v_buf: None,
         }
     }
 
-    pub fn temp_add_tri(&mut self) {
-        let vertices = vec![[-1.0f32, -1.0, 0.0], [0.0, 1.0, 0.0], [1.0, -1.0, 0.0]];
-        let data = bytemuck::cast_slice(&vertices);
-
-        self.queue.write_buffer(&self.vertices, 0, data);
+    pub fn add_mesh(&mut self, mesh: Mesh) {
+        self.v_buf = Some(self.device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("v_buf"),
+            contents: bytemuck::cast_slice(&mesh.vertices),
+            usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
+        }));
+        self.mesh = Some(mesh);
     }
 
     pub fn render(&self, _camera: &Camera, view: &TextureView) {
+        let v_buf = self.v_buf.as_ref().unwrap();
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
         {
@@ -118,22 +109,10 @@ impl Renderer {
             });
 
             rp.set_pipeline(&self.pipeline);
-            rp.set_vertex_buffer(0, self.vertices.slice(..));
+            rp.set_vertex_buffer(0, v_buf.slice(..));
             rp.draw(0..3, 0..1);
         }
 
         self.queue.submit(Some(encoder.finish()));
     }
 }
-
-const SHADER: &str = r#"
-    @vertex
-    fn vs_main(@location(0) pos: vec3f) -> @builtin(position) vec4f {
-        return vec4f(pos, 1.0);
-    }
-
-    @fragment
-    fn fs_main() -> @location(0) vec4f {
-        return vec4f(1.0, 0.0, 0.0, 1.0);
-    }
-"#;
