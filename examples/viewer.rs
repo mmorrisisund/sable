@@ -128,7 +128,7 @@ impl AppState {
         };
         let mut renderer = Renderer::new(device.clone(), queue.clone(), config);
 
-        let model = "Triangle";
+        let model = std::env::args().nth(1).unwrap();
         let path = format!("{ASSET_ROOT}/{model}/glTF/{model}.gltf");
 
         let mesh = GltfLoader::load_model(&path);
