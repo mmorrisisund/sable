@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 bytemuck.workspace = true
 glam.workspace = true
+gltf.workspace = true
 log.workspace = true
 wgpu.workspace = true

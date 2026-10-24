@@ -9,6 +9,9 @@ members = ["crates/*"]
 # Internal Crates
 sable_renderer = { path = "crates/sable-renderer", version = "0.1.0" }
 
+# resources
+gltf = "1.4.1"
+
 # math
 glam = "0.34.1"
 
@@ -33,6 +36,7 @@ name = "sable"
 path = "src/lib.rs"
 
 [dependencies]
+gltf.workspace = true
 sable_renderer.workspace = true
 
 [dev-dependencies]

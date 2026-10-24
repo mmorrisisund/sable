@@ -1,14 +1,16 @@
 use wgpu::{
     Buffer, BufferUsages, Color, ColorTargetState, ColorWrites, Device, FragmentState, LoadOp,
-    MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
-    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, StoreOp, TextureFormat, TextureView, VertexState, include_wgsl,
+    MultisampleState, Operations, PipelineCompilationOptions, PipelineLayout,
+    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, ShaderModule, StoreOp,
+    TextureFormat, TextureView, VertexAttribute, VertexBufferLayout, VertexState, VertexStepMode,
+    include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
 use crate::{
     camera::Camera,
-    mesh::{Mesh, Vertex},
+    mesh::{Geometry, Mesh},
 };
 
 pub struct RendererConfig {
@@ -21,68 +23,73 @@ pub struct Renderer {
     device: Device,
     queue: Queue,
     config: RendererConfig,
-    pipeline: RenderPipeline,
-    mesh: Option<Mesh>,
-    v_buf: Option<Buffer>,
+    pipeline: Option<RenderPipeline>,
+    pipeline_layout: PipelineLayout,
+    geometry: Option<GpuGeometry>,
+    shader: ShaderModule,
 }
 
 impl Renderer {
     pub fn new(device: Device, queue: Queue, config: RendererConfig) -> Self {
         let shader = device.create_shader_module(include_wgsl!("shaders/basic.wgsl"));
 
-        let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
             label: None,
             bind_group_layouts: &[],
             immediate_size: 0,
-        });
-
-        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("triangle pipeline"),
-            layout: Some(&layout),
-            vertex: VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(Vertex::layout())],
-            },
-            primitive: PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: MultisampleState::default(),
-            fragment: Some(FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: PipelineCompilationOptions::default(),
-                targets: &[Some(ColorTargetState {
-                    format: config.color_format,
-                    blend: None,
-                    write_mask: ColorWrites::all(),
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
         });
 
         Self {
             device,
             queue,
             config,
-            pipeline,
-            mesh: None,
-            v_buf: None,
+            pipeline: None,
+            pipeline_layout,
+            geometry: None,
+            shader,
         }
     }
 
     pub fn add_mesh(&mut self, mesh: Mesh) {
-        self.v_buf = Some(self.device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("v_buf"),
-            contents: bytemuck::cast_slice(&mesh.vertices),
-            usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
-        }));
-        self.mesh = Some(mesh);
+        let geometry = GpuGeometry::new(&mesh.geometry, &self.device);
+
+        let pipeline = self
+            .device
+            .create_render_pipeline(&RenderPipelineDescriptor {
+                label: Some("renderer pipeline"),
+                layout: Some(&self.pipeline_layout),
+                vertex: VertexState {
+                    module: &self.shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &geometry.layout_info.wgpu_layout(),
+                },
+                primitive: PrimitiveState::default(),
+                depth_stencil: None,
+                multisample: MultisampleState::default(),
+                fragment: Some(FragmentState {
+                    module: &self.shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: PipelineCompilationOptions::default(),
+                    targets: &[Some(ColorTargetState {
+                        format: self.config.color_format,
+                        blend: None,
+                        write_mask: ColorWrites::all(),
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            });
+
+        self.geometry = Some(geometry);
+        self.pipeline = Some(pipeline);
     }
 
     pub fn render(&self, _camera: &Camera, view: &TextureView) {
-        let v_buf = self.v_buf.as_ref().unwrap();
+        let Some(geo) = self.geometry.as_ref() else {
+            return;
+        };
+
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
         {
@@ -107,12 +114,82 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            rp.set_pipeline(self.pipeline.as_ref().unwrap());
 
-            rp.set_pipeline(&self.pipeline);
-            rp.set_vertex_buffer(0, v_buf.slice(..));
+            for (slot, buffer) in geo.buffers.iter().enumerate() {
+                rp.set_vertex_buffer(slot as u32, buffer.slice(..));
+            }
             rp.draw(0..3, 0..1);
         }
 
         self.queue.submit(Some(encoder.finish()));
+    }
+}
+
+struct GpuGeometry {
+    layout_info: GeneratedVertexLayout,
+    buffers: Vec<Buffer>,
+}
+
+impl GpuGeometry {
+    fn new(geometry: &Geometry, device: &Device) -> Self {
+        let mut layouts = Vec::with_capacity(geometry.attributes().len());
+        let mut buffers = Vec::new();
+
+        for (kind, attr) in geometry.attributes() {
+            layouts.insert(
+                kind.shader_location() as usize,
+                OwnedVertexLayout {
+                    array_stride: attr.format.size(),
+                    step_mode: VertexStepMode::Vertex,
+                    attributes: vec![VertexAttribute {
+                        format: attr.format,
+                        offset: 0,
+                        shader_location: kind.shader_location(),
+                    }],
+                },
+            );
+
+            buffers.insert(
+                kind.shader_location() as usize,
+                device.create_buffer_init(&BufferInitDescriptor {
+                    label: None,
+                    contents: attr.data(),
+                    usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
+                }),
+            );
+        }
+
+        Self {
+            layout_info: GeneratedVertexLayout { layouts },
+            buffers,
+        }
+    }
+}
+
+struct GeneratedVertexLayout {
+    layouts: Vec<OwnedVertexLayout>,
+}
+
+impl GeneratedVertexLayout {
+    fn wgpu_layout(&self) -> Vec<Option<VertexBufferLayout<'_>>> {
+        self.layouts.iter().map(|l| Some(l.as_wgpu())).collect()
+    }
+}
+
+/// Mirror of ['VertexbufferLayout'] that owns the attributes
+struct OwnedVertexLayout {
+    array_stride: u64,
+    step_mode: VertexStepMode,
+    attributes: Vec<VertexAttribute>,
+}
+
+impl OwnedVertexLayout {
+    fn as_wgpu(&self) -> VertexBufferLayout<'_> {
+        VertexBufferLayout {
+            array_stride: self.array_stride,
+            step_mode: self.step_mode,
+            attributes: &self.attributes,
+        }
     }
 }

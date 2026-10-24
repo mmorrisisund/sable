@@ -1,49 +1,65 @@
-use bytemuck::{Pod, Zeroable};
-use wgpu::{VertexAttribute, VertexBufferLayout, vertex_attr_array};
+use std::collections::{HashMap, hash_map::Iter};
 
+use bytemuck::{Pod, cast_slice};
+use wgpu::VertexFormat;
+
+#[derive(Default)]
 pub struct Mesh {
-    pub(crate) vertices: Vec<Vertex>,
+    pub(crate) geometry: Geometry,
 }
 
-impl Mesh {
-    pub fn triangle() -> Mesh {
-        let vertices = vec![
-            Vertex {
-                position: [-1.0f32, -1.0, 0.0],
-                color: [1.0, 0.0, 0.0],
-            },
-            Vertex {
-                position: [0.0, 1.0, 0.0],
-                color: [0.0, 1.0, 0.0],
-            },
-            Vertex {
-                position: [1.0, -1.0, 0.0],
-                color: [0.0, 0.0, 1.0],
-            },
-        ];
+#[derive(Default)]
+pub struct Geometry {
+    attributes: HashMap<AttributeKind, Attribute>,
+}
 
-        Mesh { vertices }
+impl Geometry {
+    pub fn attributes(&self) -> Iter<'_, AttributeKind, Attribute> {
+        self.attributes.iter()
+    }
+
+    pub fn set_attribute(&mut self, attribute: Attribute, kind: AttributeKind) {
+        self.attributes.insert(kind, attribute);
     }
 }
 
-#[repr(C)]
-#[derive(Debug, Default, Clone, Copy, Pod, Zeroable)]
-pub struct Vertex {
-    position: [f32; 3],
-    color: [f32; 3],
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum AttributeKind {
+    Position,
+    Color,
 }
 
-impl Vertex {
-    const ATTRS: [VertexAttribute; 2] = vertex_attr_array![
-        0 => Float32x3,
-        1 => Float32x3
-    ];
-
-    pub(crate) fn layout() -> VertexBufferLayout<'static> {
-        VertexBufferLayout {
-            array_stride: size_of::<Vertex>() as u64,
-            attributes: &Self::ATTRS,
-            step_mode: wgpu::VertexStepMode::Vertex,
+impl AttributeKind {
+    pub fn shader_location(&self) -> u32 {
+        match self {
+            Self::Position => 0,
+            Self::Color => 1,
         }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+pub struct Attribute {
+    data: Vec<u8>,
+    pub format: VertexFormat,
+    pub offset: u64,
+    pub stride: u64,
+}
+
+impl Attribute {
+    pub fn new<T: Pod>(data: &[T], format: VertexFormat) -> Self {
+        let data = cast_slice(data).to_vec();
+
+        Self {
+            data,
+            format,
+            offset: 0,
+            stride: size_of::<T>() as u64,
+        }
+    }
+
+    pub fn data(&self) -> &[u8] {
+        self.data.as_slice()
     }
 }

@@ -5,8 +5,10 @@ use gpui::{
     WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
 };
 use sable::{Renderer, RendererConfig};
-use sable_renderer::Mesh;
+use sable_renderer::GltfLoader;
 use wgpu::{Device, Queue, TextureFormat, TextureView};
+
+const ASSET_ROOT: &str = r#"C:\Users\mike\Documents\dev\rust\graphics\glTF-Sample-Assets\"#;
 
 fn main() {
     env_logger::init();
@@ -125,7 +127,12 @@ impl AppState {
             color_format,
         };
         let mut renderer = Renderer::new(device.clone(), queue.clone(), config);
-        renderer.add_mesh(Mesh::triangle());
+
+        let model = "TriangleWithoutIndices";
+        let path = format!("{ASSET_ROOT}/{model}/glTF/{model}.gltf");
+
+        let mesh = GltfLoader::load_model(&path);
+        renderer.add_mesh(mesh);
 
         Self {
             device,
