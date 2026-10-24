@@ -10,7 +10,7 @@ Isolate raw JSON parsing, binary buffer reading, and primitive assembly. Render 
 
 - [x] **Triangle Without Indices**
   - _Tests:_ Raw sequential draw pipeline. Validates structural mapping and binary buffer extraction without an index map or material.
-- [ ] **Triangle**
+- [x] **Triangle**
   - _Tests:_ Basic indexed rendering loop. Verifies target element array buffers.
 - [ ] **Simple Material**
   - _Tests:_ Core untextured material color factors. Verifies that constant properties like baseline color coefficients apply cleanly before sampling pipelines exist.

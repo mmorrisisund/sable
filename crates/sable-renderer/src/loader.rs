@@ -1,11 +1,11 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
 use gltf::{Gltf, buffer::Source};
-use wgpu::VertexFormat;
+use wgpu::{IndexFormat, VertexFormat};
 
 use crate::{
     Mesh,
-    mesh::{Attribute, AttributeKind},
+    mesh::{Attribute, AttributeKind, IndexAttribute},
 };
 
 /// Super basic gltf loader to allow development using the gltf sample assets in increasing complexity
@@ -42,6 +42,16 @@ impl GltfLoader {
                 Attribute::new(&colors, VertexFormat::Float32x3),
                 AttributeKind::Color,
             );
+
+            let indices = reader
+                .read_indices()
+                .map(|i| i.into_u32())
+                .map(std::iter::Iterator::collect::<Vec<_>>);
+
+            if let Some(data) = indices {
+                mesh.geometry
+                    .set_index_attribute(Some(IndexAttribute::new(&data, IndexFormat::Uint32)));
+            }
         }
 
         mesh

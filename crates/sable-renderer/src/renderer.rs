@@ -1,6 +1,6 @@
 use wgpu::{
-    Buffer, BufferUsages, Color, ColorTargetState, ColorWrites, Device, FragmentState, LoadOp,
-    MultisampleState, Operations, PipelineCompilationOptions, PipelineLayout,
+    Buffer, BufferUsages, Color, ColorTargetState, ColorWrites, Device, FragmentState, IndexFormat,
+    LoadOp, MultisampleState, Operations, PipelineCompilationOptions, PipelineLayout,
     PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
     RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, ShaderModule, StoreOp,
     TextureFormat, TextureView, VertexAttribute, VertexBufferLayout, VertexState, VertexStepMode,
@@ -10,7 +10,7 @@ use wgpu::{
 
 use crate::{
     camera::Camera,
-    mesh::{Geometry, Mesh},
+    mesh::{AttributeKind, Geometry, Mesh},
 };
 
 pub struct RendererConfig {
@@ -119,7 +119,13 @@ impl Renderer {
             for (slot, buffer) in geo.buffers.iter().enumerate() {
                 rp.set_vertex_buffer(slot as u32, buffer.slice(..));
             }
-            rp.draw(0..3, 0..1);
+
+            if let Some(idx_buf) = geo.index_buffer.as_ref() {
+                rp.set_index_buffer(idx_buf.slice(..), geo.index_format.unwrap());
+                rp.draw_indexed(0..geo.count, 0, 0..1);
+            } else {
+                rp.draw(0..geo.count, 0..1);
+            }
         }
 
         self.queue.submit(Some(encoder.finish()));
@@ -129,6 +135,9 @@ impl Renderer {
 struct GpuGeometry {
     layout_info: GeneratedVertexLayout,
     buffers: Vec<Buffer>,
+    index_buffer: Option<Buffer>,
+    index_format: Option<IndexFormat>,
+    count: u32,
 }
 
 impl GpuGeometry {
@@ -137,32 +146,49 @@ impl GpuGeometry {
         let mut buffers = Vec::new();
 
         for (kind, attr) in geometry.attributes() {
-            layouts.insert(
-                kind.shader_location() as usize,
-                OwnedVertexLayout {
-                    array_stride: attr.format.size(),
-                    step_mode: VertexStepMode::Vertex,
-                    attributes: vec![VertexAttribute {
-                        format: attr.format,
-                        offset: 0,
-                        shader_location: kind.shader_location(),
-                    }],
-                },
-            );
+            layouts.push(OwnedVertexLayout {
+                array_stride: attr.format.size(),
+                step_mode: VertexStepMode::Vertex,
+                attributes: vec![VertexAttribute {
+                    format: attr.format,
+                    offset: 0,
+                    shader_location: kind.shader_location(),
+                }],
+            });
 
-            buffers.insert(
-                kind.shader_location() as usize,
-                device.create_buffer_init(&BufferInitDescriptor {
-                    label: None,
-                    contents: attr.data(),
-                    usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
-                }),
-            );
+            buffers.push(device.create_buffer_init(&BufferInitDescriptor {
+                label: None,
+                contents: attr.data(),
+                usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
+            }));
         }
+
+        let index_buffer = geometry.get_index_attribute().map(|attr| {
+            device.create_buffer_init(&BufferInitDescriptor {
+                label: Some("idx_buf"),
+                contents: attr.data(),
+                usage: BufferUsages::COPY_DST | BufferUsages::INDEX,
+            })
+        });
+
+        let mut index_format = None;
+        let count = if let Some(idx_attr) = geometry.get_index_attribute() {
+            index_format = Some(idx_attr.format);
+            idx_attr.count
+        } else if let Some(attr) = geometry.get_attribute(AttributeKind::Position) {
+            attr.count
+        } else if let Some((_, attr)) = geometry.attributes().next() {
+            attr.count
+        } else {
+            0
+        };
 
         Self {
             layout_info: GeneratedVertexLayout { layouts },
             buffers,
+            index_buffer,
+            index_format,
+            count,
         }
     }
 }
