@@ -3,9 +3,12 @@ use std::collections::{HashMap, hash_map::Iter};
 use bytemuck::{Pod, cast_slice};
 use wgpu::{IndexFormat, VertexFormat};
 
+use crate::material::Material;
+
 #[derive(Default)]
 pub struct Mesh {
     pub(crate) geometry: Geometry,
+    pub(crate) material: Material,
 }
 
 #[derive(Default)]

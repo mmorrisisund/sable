@@ -1,5 +1,6 @@
 mod camera;
 mod loader;
+mod material;
 mod mesh;
 mod renderer;
 

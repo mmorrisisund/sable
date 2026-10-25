@@ -52,6 +52,12 @@ impl GltfLoader {
                 mesh.geometry
                     .set_index_attribute(Some(IndexAttribute::new(&data, IndexFormat::Uint32)));
             }
+
+            let gltf_mat = primitive.material();
+            let pbr = gltf_mat.pbr_metallic_roughness();
+            mesh.material.base_color = pbr.base_color_factor().into();
+            mesh.material.metallic = pbr.metallic_factor();
+            mesh.material.roughness = pbr.roughness_factor();
         }
 
         mesh

@@ -1,15 +1,18 @@
+use bytemuck::{Pod, Zeroable, cast_slice};
 use wgpu::{
-    Buffer, BufferUsages, Color, ColorTargetState, ColorWrites, Device, FragmentState, IndexFormat,
-    LoadOp, MultisampleState, Operations, PipelineCompilationOptions, PipelineLayout,
-    PipelineLayoutDescriptor, PrimitiveState, Queue, RenderPassColorAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, ShaderModule, StoreOp,
-    TextureFormat, TextureView, VertexAttribute, VertexBufferLayout, VertexState, VertexStepMode,
-    include_wgsl,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, Color,
+    ColorTargetState, ColorWrites, Device, FragmentState, IndexFormat, LoadOp, MultisampleState,
+    Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
+    ShaderModule, ShaderStages, StoreOp, TextureFormat, TextureView, VertexAttribute,
+    VertexBufferLayout, VertexState, VertexStepMode, include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
 use crate::{
     camera::Camera,
+    material::Material,
     mesh::{AttributeKind, Geometry, Mesh},
 };
 
@@ -24,8 +27,8 @@ pub struct Renderer {
     queue: Queue,
     config: RendererConfig,
     pipeline: Option<RenderPipeline>,
-    pipeline_layout: PipelineLayout,
     geometry: Option<GpuGeometry>,
+    material: Option<GpuMaterial>,
     shader: ShaderModule,
 }
 
@@ -33,31 +36,34 @@ impl Renderer {
     pub fn new(device: Device, queue: Queue, config: RendererConfig) -> Self {
         let shader = device.create_shader_module(include_wgsl!("shaders/basic.wgsl"));
 
-        let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: None,
-            bind_group_layouts: &[],
-            immediate_size: 0,
-        });
-
         Self {
             device,
             queue,
             config,
             pipeline: None,
-            pipeline_layout,
             geometry: None,
+            material: None,
             shader,
         }
     }
 
     pub fn add_mesh(&mut self, mesh: Mesh) {
         let geometry = GpuGeometry::new(&mesh.geometry, &self.device);
+        let material = GpuMaterial::new(&mesh.material, &self.device);
+
+        let pipeline_layout = self
+            .device
+            .create_pipeline_layout(&PipelineLayoutDescriptor {
+                label: None,
+                bind_group_layouts: &[Some(&material.bind_group_layout)],
+                immediate_size: 0,
+            });
 
         let pipeline = self
             .device
             .create_render_pipeline(&RenderPipelineDescriptor {
                 label: Some("renderer pipeline"),
-                layout: Some(&self.pipeline_layout),
+                layout: Some(&pipeline_layout),
                 vertex: VertexState {
                     module: &self.shader,
                     entry_point: Some("vs_main"),
@@ -82,11 +88,15 @@ impl Renderer {
             });
 
         self.geometry = Some(geometry);
+        self.material = Some(material);
         self.pipeline = Some(pipeline);
     }
 
     pub fn render(&self, _camera: &Camera, view: &TextureView) {
         let Some(geo) = self.geometry.as_ref() else {
+            return;
+        };
+        let Some(mat) = self.material.as_ref() else {
             return;
         };
 
@@ -114,7 +124,9 @@ impl Renderer {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+
             rp.set_pipeline(self.pipeline.as_ref().unwrap());
+            rp.set_bind_group(0, &mat.bind_group, &[]);
 
             for (slot, buffer) in geo.buffers.iter().enumerate() {
                 rp.set_vertex_buffer(slot as u32, buffer.slice(..));
@@ -189,6 +201,80 @@ impl GpuGeometry {
             index_buffer,
             index_format,
             count,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct MaterialUniform {
+    base_color: [f32; 4],
+    metallic: f32,
+    roughness: f32,
+    _pad: [f32; 2],
+}
+
+impl From<Material> for MaterialUniform {
+    fn from(mat: Material) -> Self {
+        Self {
+            base_color: mat.base_color.to_array(),
+            metallic: mat.metallic,
+            roughness: mat.roughness,
+            _pad: [0.0; 2],
+        }
+    }
+}
+
+impl From<&Material> for MaterialUniform {
+    fn from(mat: &Material) -> Self {
+        Self {
+            base_color: mat.base_color.to_array(),
+            metallic: mat.metallic,
+            roughness: mat.roughness,
+            _pad: [0.0; 2],
+        }
+    }
+}
+
+struct GpuMaterial {
+    bind_group: BindGroup,
+    bind_group_layout: BindGroupLayout,
+}
+
+impl GpuMaterial {
+    fn new(material: &Material, device: &Device) -> Self {
+        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("material_bgl"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX_FRAGMENT,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+
+        let buffer = device.create_buffer_init(&BufferInitDescriptor {
+            label: Some("material_uniform"),
+            contents: cast_slice(&[MaterialUniform::from(material)]),
+            usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
+        });
+
+        let bind_group = device.create_bind_group(&BindGroupDescriptor {
+            label: Some("material_bg"),
+            layout: &bind_group_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+        });
+
+        Self {
+            bind_group,
+            bind_group_layout,
         }
     }
 }

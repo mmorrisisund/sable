@@ -8,6 +8,14 @@ struct VertexOutput {
     @location(0) color: vec3f,
 }
 
+struct Material {
+    base_color: vec4f,
+    metallic: f32,
+    roughness: f32,
+}
+
+@group(0) @binding(0) var<uniform> u_material: Material;
+
 @vertex
 fn vs_main(in: VertexInput) ->  VertexOutput {
     var out: VertexOutput;
@@ -20,5 +28,7 @@ fn vs_main(in: VertexInput) ->  VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    return vec4f(in.color, 1.0);
+
+    return vec4f(u_material.base_color);
+    // return vec4f(in.color, 1.0);
 }
