@@ -1,0 +1,14 @@
+[package]
+name = "sable_assets"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+sable_core.workspace = true
+sable_resources.workspace = true
+
+bytemuck.workspace = true
+gltf.workspace = true
+log.workspace = true
+slotmap.workspace = true
+wgpu.workspace = true

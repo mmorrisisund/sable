@@ -1,18 +1,14 @@
 use std::{fs::File, io::Read, path::PathBuf};
 
 use gltf::{Gltf, buffer::Source};
+use sable_resources::{Attribute, AttributeKind, IndexAttribute, Mesh};
 use wgpu::{IndexFormat, VertexFormat};
-
-use crate::{
-    Mesh,
-    mesh::{Attribute, AttributeKind, IndexAttribute},
-};
 
 /// Super basic gltf loader to allow development using the gltf sample assets in increasing complexity
 pub struct GltfLoader;
 
 impl GltfLoader {
-    pub fn load_model<T: Into<PathBuf>>(name: T) -> Mesh {
+    pub fn load_model<T: Into<PathBuf>>(&self, name: T) -> Mesh {
         let path = name.into();
         let root = path.parent().unwrap().to_path_buf();
 

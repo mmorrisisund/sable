@@ -4431,8 +4431,32 @@ dependencies = [
  "env_logger",
  "gltf",
  "gpui-ce",
+ "sable_assets",
+ "sable_core",
  "sable_renderer",
+ "sable_resources",
  "wgpu",
+]
+
+[[package]]
+name = "sable_assets"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "gltf",
+ "log",
+ "sable_core",
+ "sable_resources",
+ "slotmap",
+ "wgpu",
+]
+
+[[package]]
+name = "sable_core"
+version = "0.1.0"
+dependencies = [
+ "slotmap",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4441,8 +4465,18 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam",
- "gltf",
  "log",
+ "sable_resources",
+ "slotmap",
+ "wgpu",
+]
+
+[[package]]
+name = "sable_resources"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "glam",
  "wgpu",
 ]
 

@@ -1,0 +1,9 @@
+[package]
+name = "sable_resources"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bytemuck.workspace = true
+glam.workspace = true
+wgpu.workspace = true

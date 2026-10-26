@@ -1,11 +1,13 @@
 [package]
 name = "sable_renderer"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
+sable_resources.workspace = true
+
 bytemuck.workspace = true
 glam.workspace = true
-gltf.workspace = true
 log.workspace = true
+slotmap.workspace = true
 wgpu.workspace = true

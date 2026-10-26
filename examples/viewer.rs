@@ -5,7 +5,7 @@ use gpui::{
     WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
 };
 use sable::{Renderer, RendererConfig};
-use sable_renderer::GltfLoader;
+use sable_assets::AssetServer;
 use wgpu::{Device, Queue, TextureFormat, TextureView};
 
 const ASSET_ROOT: &str = r#"C:\Users\mike\Documents\dev\rust\graphics\glTF-Sample-Assets\"#;
@@ -131,7 +131,8 @@ impl AppState {
         let model = std::env::args().nth(1).unwrap();
         let path = format!("{ASSET_ROOT}/{model}/glTF/{model}.gltf");
 
-        let mesh = GltfLoader::load_model(&path);
+        let mut server = AssetServer::new();
+        let mesh = server.load_model(&path).unwrap();
         renderer.add_mesh(mesh);
 
         Self {

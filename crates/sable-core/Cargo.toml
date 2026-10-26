@@ -1,0 +1,8 @@
+[package]
+name = "sable_core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+slotmap.workspace = true
+thiserror.workspace = true

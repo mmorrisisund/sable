@@ -10,11 +10,13 @@ use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
 };
 
-use crate::{
-    camera::Camera,
+use sable_resources::{
+    geometry::{AttributeKind, Geometry},
     material::Material,
-    mesh::{AttributeKind, Geometry, Mesh},
+    mesh::Mesh,
 };
+
+use crate::camera::Camera;
 
 pub struct RendererConfig {
     pub width: u32,

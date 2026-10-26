@@ -7,7 +7,10 @@ members = ["crates/*"]
 
 [workspace.dependencies]
 # Internal Crates
+sable_assets = { path = "crates/sable-assets", version = "0.1.0" }
+sable_core = { path = "crates/sable-core", version = "0.1.0" }
 sable_renderer = { path = "crates/sable-renderer", version = "0.1.0" }
+sable_resources = { path = "crates/sable-resources", version = "0.1.0" }
 
 # resources
 gltf = "1.4.1"
@@ -19,6 +22,8 @@ glam = "0.34.1"
 bytemuck = "1.25.2"
 env_logger = "0.11.11"
 log = "0.4.34"
+slotmap = "1.1.1"
+thiserror = "2.0.21"
 
 # graphics
 wgpu = "30.0.1"
@@ -36,8 +41,12 @@ name = "sable"
 path = "src/lib.rs"
 
 [dependencies]
-gltf.workspace = true
+sable_assets.workspace = true
+sable_core.workspace = true
 sable_renderer.workspace = true
+sable_resources.workspace = true
+
+gltf.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
