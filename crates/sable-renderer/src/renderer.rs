@@ -30,7 +30,7 @@ pub struct Renderer {
     config: RendererConfig,
     pipeline: Option<RenderPipeline>,
     geometry: Option<GpuGeometry>,
-    material: Option<GpuMaterial>,
+    // material: Option<GpuMaterial>,
     shader: ShaderModule,
 }
 
@@ -44,20 +44,21 @@ impl Renderer {
             config,
             pipeline: None,
             geometry: None,
-            material: None,
+            // material: None,
             shader,
         }
     }
 
     pub fn add_mesh(&mut self, mesh: Mesh) {
         let geometry = GpuGeometry::new(&mesh.geometry, &self.device);
-        let material = GpuMaterial::new(&mesh.material, &self.device);
+        // let material = GpuMaterial::new(&mesh.material, &self.device);
 
         let pipeline_layout = self
             .device
             .create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: None,
-                bind_group_layouts: &[Some(&material.bind_group_layout)],
+                // bind_group_layouts: &[Some(&material.bind_group_layout)],
+                bind_group_layouts: &[],
                 immediate_size: 0,
             });
 
@@ -72,7 +73,10 @@ impl Renderer {
                     compilation_options: Default::default(),
                     buffers: &geometry.layout_info.wgpu_layout(),
                 },
-                primitive: PrimitiveState::default(),
+                primitive: PrimitiveState {
+                    topology: mesh.geometry.topology,
+                    ..Default::default()
+                },
                 depth_stencil: None,
                 multisample: MultisampleState::default(),
                 fragment: Some(FragmentState {
@@ -90,7 +94,7 @@ impl Renderer {
             });
 
         self.geometry = Some(geometry);
-        self.material = Some(material);
+        // self.material = Some(material);
         self.pipeline = Some(pipeline);
     }
 
@@ -98,9 +102,9 @@ impl Renderer {
         let Some(geo) = self.geometry.as_ref() else {
             return;
         };
-        let Some(mat) = self.material.as_ref() else {
-            return;
-        };
+        // let Some(mat) = self.material.as_ref() else {
+        //     return;
+        // };
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
@@ -128,7 +132,7 @@ impl Renderer {
             });
 
             rp.set_pipeline(self.pipeline.as_ref().unwrap());
-            rp.set_bind_group(0, &mat.bind_group, &[]);
+            // rp.set_bind_group(0, &mat.bind_group, &[]);
 
             for (slot, buffer) in geo.buffers.iter().enumerate() {
                 rp.set_vertex_buffer(slot as u32, buffer.slice(..));

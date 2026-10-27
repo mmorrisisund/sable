@@ -1,12 +1,14 @@
 use std::collections::{HashMap, hash_map::Iter};
 
 use bytemuck::{Pod, cast_slice};
-use wgpu::{IndexFormat, VertexFormat};
+use wgpu::{IndexFormat, PrimitiveTopology, VertexFormat};
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Geometry {
     attributes: HashMap<AttributeKind, Attribute>,
     index_attribute: Option<IndexAttribute>,
+    pub vertex_count: usize,
+    pub topology: PrimitiveTopology,
 }
 
 impl Geometry {
@@ -74,6 +76,7 @@ impl Attribute {
     }
 }
 
+#[derive(Clone)]
 pub struct IndexAttribute {
     data: Vec<u8>,
     pub format: IndexFormat,

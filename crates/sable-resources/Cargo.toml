@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+sable_core.workspace = true
+
 bytemuck.workspace = true
 glam.workspace = true
 wgpu.workspace = true
