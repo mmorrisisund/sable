@@ -1,24 +1,32 @@
-use std::{fs::File, io::Read, path::PathBuf};
+use std::{fs::File, io::Read, path::PathBuf, sync::Arc};
 
 use gltf::{Gltf, Node, Primitive, buffer::Source, mesh::Mode};
-use sable_core::error::Result;
+use sable_core::{error::Result, handle::GeometryHandle};
 use sable_resources::{Attribute, AttributeKind, Geometry, IndexAttribute, Mesh};
 use wgpu::{IndexFormat, PrimitiveTopology, VertexFormat};
 
-use crate::AssetServer;
+use crate::{
+    AssetServer,
+    prefab::{Prefab, PrefabNode},
+};
 
 /// Super basic gltf loader to allow development using the gltf sample assets in increasing complexity
 pub struct GltfLoader {
+    assets: Arc<AssetServer>,
     buffers: Vec<Vec<u8>>,
+    prefab_nodes: Vec<PrefabNode>,
 }
 
 impl GltfLoader {
-    pub fn new() -> Self {
+    pub fn new(assets: Arc<AssetServer>) -> Self {
         Self {
+            assets,
             buffers: Vec::new(),
+            prefab_nodes: Vec::new(),
         }
     }
-    pub fn load_model<T: Into<PathBuf>>(&mut self, path: T, assets: &AssetServer) -> Result<Mesh> {
+
+    pub fn load_model<T: Into<PathBuf>>(&mut self, path: T) -> Result<Prefab> {
         let path = path.into();
         let root = path.parent().unwrap().to_path_buf();
 
@@ -31,10 +39,8 @@ impl GltfLoader {
         // load images
         // load textures
         // load materials
-        // build prefab here, move this into that.
-        let node = gltf.nodes().next().unwrap();
 
-        Ok(self.build_node_mesh(&node, assets))
+        Ok(self.build_prefab(&gltf))
     }
 
     fn load_buffers(&mut self, gltf: &Gltf, root: PathBuf) {
@@ -59,39 +65,60 @@ impl GltfLoader {
         self.buffers = data;
     }
 
-    fn build_node_mesh(&mut self, node: &Node, assets: &AssetServer) -> Mesh {
-        if let Some(mesh) = node.mesh() {
-            let primitives = mesh.primitives().collect::<Vec<_>>();
+    fn build_prefab(&mut self, gltf: &Gltf) -> Prefab {
+        for node in gltf.nodes() {
+            self.prefab_nodes.push(prefab_node_from_gltf(&node));
+        }
+
+        for node in gltf.nodes() {
+            self.bind_node_mesh(&node);
+        }
+
+        let root_indices =
+            if let Some(scene) = gltf.default_scene().or_else(|| gltf.scenes().next()) {
+                scene.nodes().map(|n| n.index()).collect()
+            } else {
+                Vec::new()
+            };
+
+        Prefab {
+            nodes: std::mem::take(&mut self.prefab_nodes),
+            root_indices,
+        }
+    }
+
+    fn bind_node_mesh(&mut self, node: &Node) {
+        if let Some(gltf_mesh) = node.mesh() {
+            let primitives = gltf_mesh.primitives().collect::<Vec<_>>();
 
             match primitives.len() {
-                0 => {
-                    panic!("1 primitive required ")
-                } // eventually this can be a no-op
+                0 => {}
                 1 => {
-                    let geometry = self.build_geometry(&primitives[0], assets);
-                    let geometry_handle = assets.geometry.add(geometry.clone());
-                    return Mesh {
-                        geometry,
-                        geometry_handle,
-                    };
+                    let mesh = self.build_mesh(&primitives[0]);
+                    self.prefab_nodes[node.index()].mesh = Some(mesh);
                 }
                 _ => panic!("split primitives not handled yet"),
             }
         }
-        panic!("mesh not found")
-        // find and attach material
     }
 
-    fn build_geometry(&mut self, primitive: &Primitive, _assets: &AssetServer) -> Geometry {
+    fn build_mesh(&mut self, primitive: &Primitive) -> Mesh {
+        let geometry = self.build_geometry(primitive);
+
+        // find and attach material
+        Mesh { geometry }
+    }
+
+    fn build_geometry(&mut self, primitive: &Primitive) -> GeometryHandle {
         let mut geometry = Geometry::default();
 
         let Some(pos_accessor) = primitive.get(&gltf::Semantic::Positions) else {
-            return geometry;
+            return self.assets.geometry.add(geometry);
         };
 
         let vertex_count = pos_accessor.count();
         if vertex_count == 0 {
-            return geometry;
+            return self.assets.geometry.add(geometry);
         }
         geometry.vertex_count = vertex_count;
 
@@ -125,8 +152,7 @@ impl GltfLoader {
             Mode::Triangles | Mode::TriangleFan => PrimitiveTopology::TriangleList,
         };
 
-        // geometry_handle = assets.geometry.add(geometry);
-        geometry
+        self.assets.geometry.add(geometry.clone())
     }
 
     fn load_surface_attributes(&mut self, primitive: &Primitive, geometry: &mut Geometry) {
@@ -141,5 +167,13 @@ impl GltfLoader {
             Attribute::new(&colors, VertexFormat::Float32x3),
             AttributeKind::Color,
         );
+    }
+}
+
+fn prefab_node_from_gltf(node: &Node) -> PrefabNode {
+    PrefabNode {
+        name: node.name().map(str::to_owned),
+        mesh: None,
+        children: node.children().map(|n| n.index()).collect(),
     }
 }

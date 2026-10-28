@@ -1,8 +1,9 @@
 use std::time::{Duration, Instant};
 
 use gpui::{
-    Application, Bounds, KeyBinding, Point, Size, WgpuSurfaceHandle, Window, WindowBounds,
-    WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
+    Application, Bounds, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, Pixels, Point,
+    Size, WgpuSurfaceHandle, Window, WindowBounds, WindowOptions, actions, div, prelude::*, px,
+    rgb, wgpu_surface,
 };
 use sable::{Renderer, RendererConfig};
 use sable_assets::AssetServer;
@@ -32,12 +33,18 @@ fn main() {
                     .expect("wgpu not supported on this machine");
 
                 let now = Instant::now();
-                cx.new(|_| TriangleApp {
+                cx.new(|_| ViewerApp {
                     surface,
                     frame_count: 0,
                     last_fps_update: now,
                     display_fps: 0.0,
                     state: None,
+
+                    pos_x: Pixels::ZERO,
+                    pos_y: Pixels::ZERO,
+                    mouse_down: false,
+                    dragging: false,
+                    button: None,
                 })
             },
         );
@@ -46,16 +53,65 @@ fn main() {
 
 actions!(editor, [Quit]);
 
-struct TriangleApp {
+struct ViewerApp {
     surface: WgpuSurfaceHandle,
     frame_count: u32,
     last_fps_update: Instant,
     display_fps: f64,
     state: Option<AppState>,
+
+    // mouse state
+    pos_x: Pixels,
+    pos_y: Pixels,
+    mouse_down: bool,
+    dragging: bool,
+    button: Option<MouseButton>,
 }
 
-impl Render for TriangleApp {
-    fn render(&mut self, window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+impl ViewerApp {
+    fn details_pane(&mut self) -> impl IntoElement {
+        div().w(px(232.0)).text_color(rgb(0x00aaff)).child(
+            div()
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .child("Position X: ")
+                        .child(format!("{:.0}", self.pos_x.value())),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .child("Position Y: ")
+                        .child(format!("{:.0}", self.pos_y.value())),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .child(format!("Dragging: {}", self.dragging)),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .child(format!("Mouse Down: {}", self.mouse_down)),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .flex_row()
+                        .child(format!("Button: {:?}", self.button)),
+                ),
+        )
+    }
+}
+
+impl Render for ViewerApp {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some((view, (w, h))) = self.surface.back_view_with_size() {
             let state = self.state.get_or_insert_with(|| {
                 let device = self.surface.device().clone();
@@ -75,6 +131,7 @@ impl Render for TriangleApp {
                 self.display_fps = self.frame_count as f64;
                 self.frame_count = 0;
                 self.last_fps_update = now;
+                window.set_window_title(&format!("FPS: {:.1} | glTF Viewer", self.display_fps));
             }
 
             window.request_animation_frame();
@@ -84,12 +141,7 @@ impl Render for TriangleApp {
             .size_full()
             .flex()
             .flex_row()
-            .child(
-                div()
-                    .w(px(232.0))
-                    .text_color(rgb(0x00aaff))
-                    .child("Details Pane"),
-            )
+            .child(self.details_pane())
             .child(
                 div()
                     .size_full()
@@ -97,17 +149,20 @@ impl Render for TriangleApp {
                     .rounded_lg()
                     .shadow_xl()
                     .bg(rgb(0x000000))
-                    // .m(px(8.0))
-                    .child(wgpu_surface(self.surface.clone()).absolute().inset_0())
-                    .child(
-                        div()
-                            .absolute()
-                            .top(px(4.0))
-                            .left(px(8.0))
-                            .text_color(rgb(0x00aaff))
-                            .text_xl()
-                            .child(format!("FPS: {:.1} | TriangleApp", self.display_fps)),
-                    ),
+                    .on_any_mouse_down(cx.listener(|this, e: &MouseDownEvent, _, _| {
+                        this.mouse_down = true;
+                        this.button = Some(e.button);
+                    }))
+                    .capture_any_mouse_up(cx.listener(|this, _, _, _| {
+                        this.mouse_down = false;
+                        this.button = None;
+                    }))
+                    .on_mouse_move(cx.listener(|this, e: &MouseMoveEvent, _: &mut Window, _| {
+                        this.pos_x = e.position.x;
+                        this.pos_y = e.position.y;
+                        this.dragging = this.mouse_down;
+                    }))
+                    .child(wgpu_surface(self.surface.clone()).absolute().inset_0()),
             )
     }
 }
@@ -132,8 +187,8 @@ impl AppState {
         let path = format!("{ASSET_ROOT}/{model}/glTF/{model}.gltf");
 
         let mut server = AssetServer::new();
-        let mesh = server.load_model(&path).unwrap();
-        renderer.add_mesh(mesh);
+        let prefab = server.load_model(&path).unwrap();
+        renderer.add_prefab(prefab, &server);
 
         Self {
             device,

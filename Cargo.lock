@@ -4498,6 +4498,8 @@ dependencies = [
  "bytemuck",
  "glam",
  "log",
+ "sable_assets",
+ "sable_core",
  "sable_resources",
  "slotmap",
  "wgpu",

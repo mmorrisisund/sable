@@ -1,4 +1,10 @@
 use bytemuck::{Pod, Zeroable, cast_slice};
+use sable_assets::AssetServer;
+use sable_core::handle::PrefabHandle;
+use sable_resources::{
+    geometry::{AttributeKind, Geometry},
+    material::Material,
+};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, Color,
@@ -8,12 +14,6 @@ use wgpu::{
     ShaderModule, ShaderStages, StoreOp, TextureFormat, TextureView, VertexAttribute,
     VertexBufferLayout, VertexState, VertexStepMode, include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
-};
-
-use sable_resources::{
-    geometry::{AttributeKind, Geometry},
-    material::Material,
-    mesh::Mesh,
 };
 
 use crate::camera::Camera;
@@ -48,9 +48,12 @@ impl Renderer {
             shader,
         }
     }
-
-    pub fn add_mesh(&mut self, mesh: Mesh) {
-        let geometry = GpuGeometry::new(&mesh.geometry, &self.device);
+    // NEXT STEPS: create some kind of ability to render a heirarchy (without a scene? very basic scene?)
+    pub fn add_prefab(&mut self, handle: PrefabHandle, assets: &AssetServer) {
+        let prefab = assets.prefab.get(handle).unwrap();
+        let mesh = prefab.nodes[1].mesh.as_ref().unwrap();
+        let geometry = assets.geometry.get(mesh.geometry).unwrap();
+        let gpu_geo = GpuGeometry::new(&geometry, &self.device);
         // let material = GpuMaterial::new(&mesh.material, &self.device);
 
         let pipeline_layout = self
@@ -71,10 +74,10 @@ impl Renderer {
                     module: &self.shader,
                     entry_point: Some("vs_main"),
                     compilation_options: Default::default(),
-                    buffers: &geometry.layout_info.wgpu_layout(),
+                    buffers: &gpu_geo.layout_info.wgpu_layout(),
                 },
                 primitive: PrimitiveState {
-                    topology: mesh.geometry.topology,
+                    topology: geometry.topology,
                     ..Default::default()
                 },
                 depth_stencil: None,
@@ -93,7 +96,7 @@ impl Renderer {
                 cache: None,
             });
 
-        self.geometry = Some(geometry);
+        self.geometry = Some(gpu_geo);
         // self.material = Some(material);
         self.pipeline = Some(pipeline);
     }

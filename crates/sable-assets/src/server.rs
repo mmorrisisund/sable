@@ -1,23 +1,32 @@
 use std::{path::PathBuf, sync::Arc};
 
-use sable_core::{error::Result, handle::GeometryHandle};
-use sable_resources::{Geometry, Mesh};
+use sable_core::{
+    error::Result,
+    handle::{GeometryHandle, PrefabHandle},
+};
+use sable_resources::Geometry;
 
-use crate::{container::Container, loader::GltfLoader};
+use crate::{container::Container, loader::GltfLoader, prefab::Prefab};
 
+#[derive(Clone)]
 pub struct AssetServer {
+    pub prefab: Arc<Container<PrefabHandle, Prefab>>,
     pub geometry: Arc<Container<GeometryHandle, Geometry>>,
 }
 
 impl AssetServer {
     pub fn new() -> Self {
         Self {
+            prefab: Arc::new(Container::new()),
             geometry: Arc::new(Container::new()),
         }
     }
-    pub fn load_model<T: Into<PathBuf>>(&mut self, path: T) -> Result<Mesh> {
-        let mut loader = GltfLoader::new();
-        loader.load_model(path, self)
+    pub fn load_model<T: Into<PathBuf>>(&mut self, path: T) -> Result<PrefabHandle> {
+        let mut loader = GltfLoader::new(Arc::new(self.clone()));
+        let prefab = loader.load_model(path)?;
+        let handle = self.prefab.add(prefab);
+
+        Ok(handle)
     }
 }
 

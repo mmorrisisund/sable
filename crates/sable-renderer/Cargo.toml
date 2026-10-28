@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+sable_assets.workspace = true
+sable_core.workspace = true
 sable_resources.workspace = true
 
 bytemuck.workspace = true
