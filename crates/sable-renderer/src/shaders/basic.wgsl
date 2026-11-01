@@ -8,20 +8,29 @@ struct VertexOutput {
     @location(0) color: vec3f,
 }
 
-struct Material {
-    base_color: vec4f,
-    metallic: f32,
-    roughness: f32,
+struct CameraUniform {
+    view: mat4x4f,
+    projection: mat4x4f,
+    view_projection: mat4x4f,
+    position: vec4f,
 }
 
-@group(0) @binding(0) var<uniform> u_material: Material;
+@group(0) @binding(0) var<uniform> u_camera: CameraUniform;
+
+// struct Material {
+//     base_color: vec4f,
+//     metallic: f32,
+//     roughness: f32,
+// }
+
+// @group(0) @binding(0) var<uniform> u_material: Material;
 
 @vertex
 fn vs_main(in: VertexInput) ->  VertexOutput {
     var out: VertexOutput;
 
-    out.position = vec4f(in.position, 1.0);
-    out.color = in.color;
+    out.position = u_camera.view_projection * vec4f(in.position, 1.0);
+    out.color = vec3f(u_camera.position.xy, in.color.z);
     
     return out;
 }

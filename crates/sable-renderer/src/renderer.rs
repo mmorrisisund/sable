@@ -7,16 +7,16 @@ use sable_resources::{
 };
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, Color,
-    ColorTargetState, ColorWrites, Device, FragmentState, IndexFormat, LoadOp, MultisampleState,
-    Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor,
-    ShaderModule, ShaderStages, StoreOp, TextureFormat, TextureView, VertexAttribute,
-    VertexBufferLayout, VertexState, VertexStepMode, include_wgsl,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
+    Color, ColorTargetState, ColorWrites, Device, FragmentState, IndexFormat, LoadOp,
+    MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
+    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, ShaderModule, ShaderStages, StoreOp, TextureFormat, TextureView,
+    VertexAttribute, VertexBufferLayout, VertexState, VertexStepMode, include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
-use crate::camera::Camera;
+use crate::{RenderCamera, camera::CameraUniform};
 
 pub struct RendererConfig {
     pub width: u32,
@@ -32,11 +32,27 @@ pub struct Renderer {
     geometry: Option<GpuGeometry>,
     // material: Option<GpuMaterial>,
     shader: ShaderModule,
+    camera_layout: BindGroupLayout,
+    camera_bg: Option<BindGroup>,
+    camera_uniform: Option<Buffer>,
 }
 
 impl Renderer {
     pub fn new(device: Device, queue: Queue, config: RendererConfig) -> Self {
         let shader = device.create_shader_module(include_wgsl!("shaders/basic.wgsl"));
+        let camera_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
+            label: Some("camera bgl"),
+            entries: &[BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX_FRAGMENT,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
 
         Self {
             device,
@@ -46,8 +62,12 @@ impl Renderer {
             geometry: None,
             // material: None,
             shader,
+            camera_layout,
+            camera_bg: None,
+            camera_uniform: None,
         }
     }
+
     // NEXT STEPS: create some kind of ability to render a heirarchy (without a scene? very basic scene?)
     pub fn add_prefab(&mut self, handle: PrefabHandle, assets: &AssetServer) {
         let prefab = assets.prefab.get(handle).unwrap();
@@ -61,7 +81,8 @@ impl Renderer {
             .create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: None,
                 // bind_group_layouts: &[Some(&material.bind_group_layout)],
-                bind_group_layouts: &[],
+                // bind_group_layouts: &[],
+                bind_group_layouts: &[Some(&self.camera_layout)],
                 immediate_size: 0,
             });
 
@@ -99,10 +120,37 @@ impl Renderer {
         self.geometry = Some(gpu_geo);
         // self.material = Some(material);
         self.pipeline = Some(pipeline);
+
+        let uniform = self.device.create_buffer(&BufferDescriptor {
+            label: Some("camera uniform"),
+            size: size_of::<CameraUniform>() as u64,
+            usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
+            mapped_at_creation: false,
+        });
+
+        self.camera_bg = Some(self.device.create_bind_group(&BindGroupDescriptor {
+            label: Some("camera bg"),
+            layout: &self.camera_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: uniform.as_entire_binding(),
+            }],
+        }));
+
+        self.camera_uniform = Some(uniform);
     }
 
-    pub fn render(&self, _camera: &Camera, view: &TextureView) {
+    pub fn render(&self, camera: &impl RenderCamera, view: &TextureView) {
         let Some(geo) = self.geometry.as_ref() else {
+            return;
+        };
+        let Some(cam_uni) = self.camera_uniform.as_ref() else {
+            return;
+        };
+        self.queue
+            .write_buffer(cam_uni, 0, cast_slice(&[camera.extract_uniform()]));
+
+        let Some(cam_bg) = self.camera_bg.as_ref() else {
             return;
         };
         // let Some(mat) = self.material.as_ref() else {
@@ -135,6 +183,7 @@ impl Renderer {
             });
 
             rp.set_pipeline(self.pipeline.as_ref().unwrap());
+            rp.set_bind_group(0, cam_bg, &[]);
             // rp.set_bind_group(0, &mat.bind_group, &[]);
 
             for (slot, buffer) in geo.buffers.iter().enumerate() {

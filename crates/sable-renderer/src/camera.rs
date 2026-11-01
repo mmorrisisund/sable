@@ -1,28 +1,16 @@
+use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
-#[derive(Default)]
-pub struct Camera {
-    view: Mat4,
-    projection: Mat4,
-    position: Vec3,
+pub trait RenderCamera {
+    fn extract_uniform(&self) -> CameraUniform;
 }
 
-impl Camera {
-    pub fn perspective(
-        position: Vec3,
-        target: Vec3,
-        fov_y_radians: f32,
-        aspect: f32,
-        near: f32,
-        far: f32,
-    ) -> Camera {
-        let view = glam::camera::rh::view::look_at_mat4(position, target, Vec3::Y);
-        let proj = glam::camera::rh::proj::directx::perspective(fov_y_radians, aspect, near, far);
-
-        Camera {
-            view,
-            projection: proj,
-            position,
-        }
-    }
+#[repr(C)]
+#[derive(Default, Clone, Copy, Pod, Zeroable)]
+pub struct CameraUniform {
+    pub view: Mat4,
+    pub projection: Mat4,
+    pub view_projection: Mat4,
+    pub position: Vec3,
+    pub _pad0: f32,
 }

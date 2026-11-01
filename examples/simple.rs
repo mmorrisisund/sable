@@ -4,7 +4,7 @@ use gpui::{
     Application, Bounds, KeyBinding, Point, Size, WgpuSurfaceHandle, Window, WindowBounds,
     WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
 };
-use sable::{Renderer, RendererConfig, renderer::Camera};
+use sable::{Renderer, RendererConfig, renderer::CameraUniform};
 use wgpu::{Device, Queue, TextureFormat, TextureView};
 
 fn main() {
@@ -126,6 +126,6 @@ impl AppState {
     }
 
     fn render(&self, view: &TextureView) {
-        self.renderer.render(&Camera::default(), view);
+        // self.renderer.render(&CameraUniform::default(), view);
     }
 }

@@ -16,7 +16,7 @@ sable_resources = { path = "crates/sable-resources", version = "0.1.0" }
 gltf = "1.4.1"
 
 # math
-glam = "0.34.1"
+glam = { version = "0.34.1", features = ["bytemuck"] }
 
 # utilities
 bytemuck = "1.25.2"
@@ -51,5 +51,6 @@ gltf.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
+glam.workspace = true
 gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/wgpui" }
 wgpu.workspace = true
