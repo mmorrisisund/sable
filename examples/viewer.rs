@@ -7,12 +7,13 @@ use gpui::{
     prelude::*, px, rgb, wgpu_surface,
 };
 use sable::{Renderer, RendererConfig};
-use sable_assets::AssetServer;
+use sable_assets::{AssetServer, scene_ext::SceneExt};
+use sable_resources::Scene;
 use wgpu::{Device, Queue, TextureFormat, TextureView};
 
 use crate::camera::OrbitCamera;
 
-const ASSET_ROOT: &str = r#"C:\Users\mike\Documents\dev\rust\graphics\glTF-Sample-Assets\"#;
+const ASSET_ROOT: &str = r#"C:\Users\mike\code\assets\glTF\"#;
 
 fn main() {
     env_logger::init();
@@ -216,14 +217,21 @@ impl RenderState {
             height: h,
             color_format,
         };
-        let mut renderer = Renderer::new(device.clone(), queue.clone(), config);
 
         let model = std::env::args().nth(1).unwrap();
         let path = format!("{ASSET_ROOT}/{model}/glTF/{model}.gltf");
 
         let mut server = AssetServer::new();
-        let prefab = server.load_model(&path).unwrap();
-        renderer.add_prefab(prefab, &server);
+        let prefab_handle = server.load_model(&path).unwrap();
+        let prefab = server.prefab.get(prefab_handle).unwrap();
+
+        let mut renderer = Renderer::new(device.clone(), queue.clone(), config, server);
+
+        let mut scene = Scene::new();
+        scene.instantiate_prefab(&prefab);
+        renderer.set_scene(scene);
+
+        // renderer.add_prefab(prefab_handle);
 
         let camera = OrbitCamera::new(
             vec3(0.0, 0.0, 5.0),
@@ -296,7 +304,8 @@ mod camera {
                 self.yaw.cos() * self.pitch.cos(),
                 self.pitch.sin(),
                 self.yaw.sin() * self.pitch.cos(),
-            );
+            )
+            .normalize();
 
             self.position = self.target - dir * self.radius;
             self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);

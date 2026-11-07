@@ -1,18 +1,13 @@
 use bytemuck::{Pod, Zeroable, cast_slice};
 use sable_assets::AssetServer;
-use sable_core::handle::PrefabHandle;
-use sable_resources::{
-    geometry::{AttributeKind, Geometry},
-    material::Material,
-};
+use sable_resources::{GpuGeometry, ResourceManager, Scene, material::Material};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
-    Color, ColorTargetState, ColorWrites, Device, FragmentState, IndexFormat, LoadOp,
-    MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
-    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, ShaderModule, ShaderStages, StoreOp, TextureFormat, TextureView,
-    VertexAttribute, VertexBufferLayout, VertexState, VertexStepMode, include_wgsl,
+    Color, ColorTargetState, ColorWrites, Device, FragmentState, LoadOp, MultisampleState,
+    Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, Queue,
+    RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, ShaderModule,
+    ShaderStages, StoreOp, TextureFormat, TextureView, VertexState, include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
@@ -28,9 +23,12 @@ pub struct Renderer {
     device: Device,
     queue: Queue,
     config: RendererConfig,
-    pipeline: Option<RenderPipeline>,
-    geometry: Option<GpuGeometry>,
-    // material: Option<GpuMaterial>,
+
+    assets: AssetServer,
+    resources: ResourceManager,
+
+    scene: Option<Scene>,
+
     shader: ShaderModule,
     camera_layout: BindGroupLayout,
     camera_bg: Option<BindGroup>,
@@ -38,7 +36,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(device: Device, queue: Queue, config: RendererConfig) -> Self {
+    pub fn new(device: Device, queue: Queue, config: RendererConfig, assets: AssetServer) -> Self {
         let shader = device.create_shader_module(include_wgsl!("shaders/basic.wgsl"));
         let camera_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("camera bgl"),
@@ -58,92 +56,22 @@ impl Renderer {
             device,
             queue,
             config,
-            pipeline: None,
-            geometry: None,
-            // material: None,
+            assets,
+            resources: ResourceManager::default(),
             shader,
             camera_layout,
             camera_bg: None,
             camera_uniform: None,
+            scene: None,
         }
     }
 
-    // NEXT STEPS: create some kind of ability to render a heirarchy (without a scene? very basic scene?)
-    pub fn add_prefab(&mut self, handle: PrefabHandle, assets: &AssetServer) {
-        let prefab = assets.prefab.get(handle).unwrap();
-        let mesh = prefab.nodes[1].mesh.as_ref().unwrap();
-        let geometry = assets.geometry.get(mesh.geometry).unwrap();
-        let gpu_geo = GpuGeometry::new(&geometry, &self.device);
-        // let material = GpuMaterial::new(&mesh.material, &self.device);
-
-        let pipeline_layout = self
-            .device
-            .create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: None,
-                // bind_group_layouts: &[Some(&material.bind_group_layout)],
-                // bind_group_layouts: &[],
-                bind_group_layouts: &[Some(&self.camera_layout)],
-                immediate_size: 0,
-            });
-
-        let pipeline = self
-            .device
-            .create_render_pipeline(&RenderPipelineDescriptor {
-                label: Some("renderer pipeline"),
-                layout: Some(&pipeline_layout),
-                vertex: VertexState {
-                    module: &self.shader,
-                    entry_point: Some("vs_main"),
-                    compilation_options: Default::default(),
-                    buffers: &gpu_geo.layout_info.wgpu_layout(),
-                },
-                primitive: PrimitiveState {
-                    topology: geometry.topology,
-                    ..Default::default()
-                },
-                depth_stencil: None,
-                multisample: MultisampleState::default(),
-                fragment: Some(FragmentState {
-                    module: &self.shader,
-                    entry_point: Some("fs_main"),
-                    compilation_options: PipelineCompilationOptions::default(),
-                    targets: &[Some(ColorTargetState {
-                        format: self.config.color_format,
-                        blend: None,
-                        write_mask: ColorWrites::all(),
-                    })],
-                }),
-                multiview_mask: None,
-                cache: None,
-            });
-
-        self.geometry = Some(gpu_geo);
-        // self.material = Some(material);
-        self.pipeline = Some(pipeline);
-
-        let uniform = self.device.create_buffer(&BufferDescriptor {
-            label: Some("camera uniform"),
-            size: size_of::<CameraUniform>() as u64,
-            usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
-            mapped_at_creation: false,
-        });
-
-        self.camera_bg = Some(self.device.create_bind_group(&BindGroupDescriptor {
-            label: Some("camera bg"),
-            layout: &self.camera_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: uniform.as_entire_binding(),
-            }],
-        }));
-
-        self.camera_uniform = Some(uniform);
+    pub fn set_scene(&mut self, scene: Scene) {
+        self.scene = Some(scene);
+        self.extract_scene();
     }
 
     pub fn render(&self, camera: &impl RenderCamera, view: &TextureView) {
-        let Some(geo) = self.geometry.as_ref() else {
-            return;
-        };
         let Some(cam_uni) = self.camera_uniform.as_ref() else {
             return;
         };
@@ -153,9 +81,6 @@ impl Renderer {
         let Some(cam_bg) = self.camera_bg.as_ref() else {
             return;
         };
-        // let Some(mat) = self.material.as_ref() else {
-        //     return;
-        // };
 
         let mut encoder = self.device.create_command_encoder(&Default::default());
 
@@ -182,19 +107,26 @@ impl Renderer {
                 multiview_mask: None,
             });
 
-            rp.set_pipeline(self.pipeline.as_ref().unwrap());
-            rp.set_bind_group(0, cam_bg, &[]);
-            // rp.set_bind_group(0, &mat.bind_group, &[]);
+            for (handle, geometry) in &self.resources.geometry {
+                let pipeline = self
+                    .resources
+                    .pipelines
+                    .get(handle)
+                    .expect("pipeline must exist");
+                rp.set_pipeline(pipeline);
+                rp.set_bind_group(0, cam_bg, &[]);
+                // rp.set_bind_group(0, &mat.bind_group, &[]);
 
-            for (slot, buffer) in geo.buffers.iter().enumerate() {
-                rp.set_vertex_buffer(slot as u32, buffer.slice(..));
-            }
+                for (slot, buffer) in geometry.vertex_buffers().iter().enumerate() {
+                    rp.set_vertex_buffer(slot as u32, buffer.slice(..));
+                }
 
-            if let Some(idx_buf) = geo.index_buffer.as_ref() {
-                rp.set_index_buffer(idx_buf.slice(..), geo.index_format.unwrap());
-                rp.draw_indexed(0..geo.count, 0, 0..1);
-            } else {
-                rp.draw(0..geo.count, 0..1);
+                if let Some(idx_buf) = geometry.index_buffer() {
+                    rp.set_index_buffer(idx_buf.slice(..), *geometry.index_format().unwrap());
+                    rp.draw_indexed(0..geometry.count(), 0, 0..1);
+                } else {
+                    rp.draw(0..geometry.count(), 0..1);
+                }
             }
         }
 
@@ -202,64 +134,84 @@ impl Renderer {
     }
 }
 
-struct GpuGeometry {
-    layout_info: GeneratedVertexLayout,
-    buffers: Vec<Buffer>,
-    index_buffer: Option<Buffer>,
-    index_format: Option<IndexFormat>,
-    count: u32,
-}
-
-impl GpuGeometry {
-    fn new(geometry: &Geometry, device: &Device) -> Self {
-        let mut layouts = Vec::with_capacity(geometry.attributes().len());
-        let mut buffers = Vec::new();
-
-        for (kind, attr) in geometry.attributes() {
-            layouts.push(OwnedVertexLayout {
-                array_stride: attr.format.size(),
-                step_mode: VertexStepMode::Vertex,
-                attributes: vec![VertexAttribute {
-                    format: attr.format,
-                    offset: 0,
-                    shader_location: kind.shader_location(),
-                }],
-            });
-
-            buffers.push(device.create_buffer_init(&BufferInitDescriptor {
-                label: None,
-                contents: attr.data(),
-                usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
-            }));
-        }
-
-        let index_buffer = geometry.get_index_attribute().map(|attr| {
-            device.create_buffer_init(&BufferInitDescriptor {
-                label: Some("idx_buf"),
-                contents: attr.data(),
-                usage: BufferUsages::COPY_DST | BufferUsages::INDEX,
-            })
-        });
-
-        let mut index_format = None;
-        let count = if let Some(idx_attr) = geometry.get_index_attribute() {
-            index_format = Some(idx_attr.format);
-            idx_attr.count
-        } else if let Some(attr) = geometry.get_attribute(AttributeKind::Position) {
-            attr.count
-        } else if let Some((_, attr)) = geometry.attributes().next() {
-            attr.count
-        } else {
-            0
+impl Renderer {
+    fn extract_scene(&mut self) {
+        let Some(scene) = self.scene.as_ref() else {
+            return;
         };
 
-        Self {
-            layout_info: GeneratedVertexLayout { layouts },
-            buffers,
-            index_buffer,
-            index_format,
-            count,
+        for node in scene.nodes() {
+            if let Some(mesh) = scene.get_mesh(node)
+                && let Some(mesh_geo) = self.assets.geometry.get(mesh.geometry)
+            {
+                let geo = GpuGeometry::new(&mesh_geo, &self.device);
+                self.resources.geometry.insert(geo);
+            }
         }
+
+        let pipeline_layout = self
+            .device
+            .create_pipeline_layout(&PipelineLayoutDescriptor {
+                label: None,
+                // bind_group_layouts: &[Some(&material.bind_group_layout)],
+                // bind_group_layouts: &[],
+                bind_group_layouts: &[Some(&self.camera_layout)],
+                immediate_size: 0,
+            });
+
+        for (geo_handle, gpu_geo) in &self.resources.geometry {
+            let pipeline = self
+                .device
+                .create_render_pipeline(&RenderPipelineDescriptor {
+                    label: Some("renderer pipeline"),
+                    layout: Some(&pipeline_layout),
+                    vertex: VertexState {
+                        module: &self.shader,
+                        entry_point: Some("vs_main"),
+                        compilation_options: Default::default(),
+                        buffers: &gpu_geo.vertex_layout().wgpu_layout(),
+                    },
+                    primitive: PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList, // TODO: Get from model
+                        ..Default::default()
+                    },
+                    depth_stencil: None,
+                    multisample: MultisampleState::default(),
+                    fragment: Some(FragmentState {
+                        module: &self.shader,
+                        entry_point: Some("fs_main"),
+                        compilation_options: PipelineCompilationOptions::default(),
+                        targets: &[Some(ColorTargetState {
+                            format: self.config.color_format,
+                            blend: None,
+                            write_mask: ColorWrites::all(),
+                        })],
+                    }),
+                    multiview_mask: None,
+                    cache: None,
+                });
+
+            // self.material = Some(material);
+            self.resources.pipelines.insert(geo_handle, pipeline);
+        }
+
+        let uniform = self.device.create_buffer(&BufferDescriptor {
+            label: Some("camera uniform"),
+            size: size_of::<CameraUniform>() as u64,
+            usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
+            mapped_at_creation: false,
+        });
+
+        self.camera_bg = Some(self.device.create_bind_group(&BindGroupDescriptor {
+            label: Some("camera bg"),
+            layout: &self.camera_layout,
+            entries: &[BindGroupEntry {
+                binding: 0,
+                resource: uniform.as_entire_binding(),
+            }],
+        }));
+
+        self.camera_uniform = Some(uniform);
     }
 }
 
@@ -333,33 +285,6 @@ impl GpuMaterial {
         Self {
             bind_group,
             bind_group_layout,
-        }
-    }
-}
-
-struct GeneratedVertexLayout {
-    layouts: Vec<OwnedVertexLayout>,
-}
-
-impl GeneratedVertexLayout {
-    fn wgpu_layout(&self) -> Vec<Option<VertexBufferLayout<'_>>> {
-        self.layouts.iter().map(|l| Some(l.as_wgpu())).collect()
-    }
-}
-
-/// Mirror of ['VertexbufferLayout'] that owns the attributes
-struct OwnedVertexLayout {
-    array_stride: u64,
-    step_mode: VertexStepMode,
-    attributes: Vec<VertexAttribute>,
-}
-
-impl OwnedVertexLayout {
-    fn as_wgpu(&self) -> VertexBufferLayout<'_> {
-        VertexBufferLayout {
-            array_stride: self.array_stride,
-            step_mode: self.step_mode,
-            attributes: &self.attributes,
         }
     }
 }

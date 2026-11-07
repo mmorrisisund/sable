@@ -8,4 +8,6 @@ sable_core.workspace = true
 
 bytemuck.workspace = true
 glam.workspace = true
+log.workspace = true
+slotmap.workspace = true
 wgpu.workspace = true
