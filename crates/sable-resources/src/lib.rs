@@ -7,4 +7,4 @@ pub use cpu::{
     mesh::{self, Mesh},
     scene::Scene,
 };
-pub use gpu::{geometry::GpuGeometry, manager::ResourceManager};
+pub use gpu::{geometry::GpuGeometry, manager::ResourceManager, material::GpuMaterial};

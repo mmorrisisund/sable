@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 use glam::{Vec3, vec2, vec3};
 use gpui::{
     Application, Bounds, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, ScrollDelta, ScrollWheelEvent, Size, WgpuSurfaceHandle, Window, WindowBounds,
-    WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
+    Pixels, Point, ScrollWheelEvent, Size, WgpuSurfaceHandle, Window, WindowBounds, WindowOptions,
+    actions, div, prelude::*, px, rgb, wgpu_surface,
 };
 use sable::{Renderer, RendererConfig};
 use sable_assets::{AssetServer, scene_ext::SceneExt};

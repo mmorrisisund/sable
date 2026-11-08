@@ -1,11 +1,13 @@
 struct VertexInput {
     @location(0) position: vec3f,
     @location(1) color: vec3f,
+    @location(2) normal: vec3f,
 }
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
     @location(0) color: vec3f,
+    @location(1) normal: vec3f,
 }
 
 struct CameraUniform {
@@ -18,20 +20,21 @@ struct CameraUniform {
 @group(0) @binding(0) var<uniform> u_camera: CameraUniform;
 
 
-// struct Material {
-//     base_color: vec4f,
-//     metallic: f32,
-//     roughness: f32,
-// }
+struct Material {
+    base_color: vec4f,
+    metallic: f32,
+    roughness: f32,
+}
 
-// @group(0) @binding(0) var<uniform> u_material: Material;
+@group(1) @binding(0) var<uniform> u_material: Material;
 
 @vertex
 fn vs_main(in: VertexInput) ->  VertexOutput {
     var out: VertexOutput;
 
     out.position = u_camera.view_projection * vec4f(in.position, 1.0);
-    out.color = vec3f(u_camera.position.xy, in.color.z);
+    out.color = in.color;
+    out.normal = in.normal;
     
     return out;
 }
@@ -40,5 +43,5 @@ fn vs_main(in: VertexInput) ->  VertexOutput {
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 
     // return vec4f(u_material.base_color);
-    return vec4f(in.color, 1.0);
+    return vec4f(in.normal, 1.0);
 }

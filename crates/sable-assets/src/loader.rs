@@ -1,8 +1,11 @@
 use std::{fs::File, io::Read, path::PathBuf, sync::Arc};
 
 use gltf::{Gltf, Node, Primitive, buffer::Source, mesh::Mode};
-use sable_core::{error::Result, handle::GeometryHandle};
-use sable_resources::{Attribute, AttributeKind, Geometry, IndexAttribute, Mesh};
+use sable_core::{
+    error::Result,
+    handle::{GeometryHandle, MaterialHandle},
+};
+use sable_resources::{Attribute, AttributeKind, Geometry, IndexAttribute, Material, Mesh};
 use wgpu::{IndexFormat, PrimitiveTopology, VertexFormat};
 
 use crate::{
@@ -15,6 +18,7 @@ pub struct GltfLoader {
     assets: Arc<AssetServer>,
     buffers: Vec<Vec<u8>>,
     prefab_nodes: Vec<PrefabNode>,
+    materials: Vec<MaterialHandle>,
 }
 
 impl GltfLoader {
@@ -23,6 +27,7 @@ impl GltfLoader {
             assets,
             buffers: Vec::new(),
             prefab_nodes: Vec::new(),
+            materials: Vec::new(),
         }
     }
 
@@ -38,7 +43,7 @@ impl GltfLoader {
 
         // load images
         // load textures
-        // load materials
+        self.load_materials(&gltf);
 
         Ok(self.build_prefab(&gltf))
     }
@@ -63,6 +68,20 @@ impl GltfLoader {
         }
 
         self.buffers = data;
+    }
+
+    fn load_materials(&mut self, gltf: &Gltf) {
+        for gltf_mat in gltf.materials() {
+            let pbr = gltf_mat.pbr_metallic_roughness();
+
+            let handle = self.assets.material.add(Material {
+                base_color: pbr.base_color_factor().into(),
+                metallic: pbr.metallic_factor(),
+                roughness: pbr.roughness_factor(),
+            });
+
+            self.materials.push(handle);
+        }
     }
 
     fn build_prefab(&mut self, gltf: &Gltf) -> Prefab {
@@ -105,8 +124,9 @@ impl GltfLoader {
     fn build_mesh(&mut self, primitive: &Primitive) -> Mesh {
         let geometry = self.build_geometry(primitive);
 
-        // find and attach material
-        Mesh { geometry }
+        let material = self.materials[primitive.material().index().unwrap()];
+
+        Mesh { geometry, material }
     }
 
     fn build_geometry(&mut self, primitive: &Primitive) -> GeometryHandle {
@@ -166,6 +186,17 @@ impl GltfLoader {
         geometry.set_attribute(
             Attribute::new(&colors, VertexFormat::Float32x3),
             AttributeKind::Color,
+        );
+
+        let normals = if let Some(normals) = reader.read_normals() {
+            normals.collect()
+        } else {
+            vec![[0.0; 3]]
+        };
+
+        geometry.set_attribute(
+            Attribute::new(&normals, VertexFormat::Float32x3),
+            AttributeKind::Normal,
         );
     }
 }

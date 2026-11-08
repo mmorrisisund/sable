@@ -30,7 +30,7 @@ Build deterministic loading, validation, diagnostics, screenshot capture, and go
   - **Tests:** Minimal scene/node/mesh traversal, POSITION accessors, sequential non-indexed drawing.
 - [x] **`Triangle`**
   - **Tests:** Index accessors and indexed triangle drawing.
-- [ ] **`Box`**
+- [x] **`Box`**
   - **Tests:** Normals, a basic material, depth testing, face culling, and reusable mesh upload.
 
 ---
@@ -55,7 +55,7 @@ Complete static core mesh ingestion while rendering with a simple diagnostic sha
   - **Tests:** Primitive modes with and without normals and defined fallback shading.
 - [ ] **`SimpleMeshes`**
   - **Tests:** Multiple nodes sharing one mesh and multiple vertex attributes.
-- [x] **`SimpleMaterial`**
+- [ ] **`SimpleMaterial`**
   - **Tests:** Core untextured material factors and primitive-to-material binding.
 - [ ] **`NegativeScaleTest`**
   - **Tests:** Mirrored transforms, normal matrices, face winding, and culling.

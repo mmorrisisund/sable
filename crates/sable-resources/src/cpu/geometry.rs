@@ -37,6 +37,7 @@ impl Geometry {
 pub enum AttributeKind {
     Position,
     Color,
+    Normal,
 }
 
 impl AttributeKind {
@@ -44,6 +45,7 @@ impl AttributeKind {
         match self {
             Self::Position => 0,
             Self::Color => 1,
+            Self::Normal => 2,
         }
     }
 }

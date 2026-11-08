@@ -2,9 +2,9 @@ use std::{path::PathBuf, sync::Arc};
 
 use sable_core::{
     error::Result,
-    handle::{GeometryHandle, PrefabHandle},
+    handle::{GeometryHandle, MaterialHandle, PrefabHandle},
 };
-use sable_resources::Geometry;
+use sable_resources::{Geometry, material::Material};
 
 use crate::{container::Container, loader::GltfLoader, prefab::Prefab};
 
@@ -12,6 +12,7 @@ use crate::{container::Container, loader::GltfLoader, prefab::Prefab};
 pub struct AssetServer {
     pub prefab: Arc<Container<PrefabHandle, Prefab>>,
     pub geometry: Arc<Container<GeometryHandle, Geometry>>,
+    pub material: Arc<Container<MaterialHandle, Material>>,
 }
 
 impl AssetServer {
@@ -19,6 +20,7 @@ impl AssetServer {
         Self {
             prefab: Arc::new(Container::new()),
             geometry: Arc::new(Container::new()),
+            material: Arc::new(Container::new()),
         }
     }
     pub fn load_model<T: Into<PathBuf>>(&mut self, path: T) -> Result<PrefabHandle> {

@@ -1,16 +1,16 @@
-use bytemuck::{Pod, Zeroable, cast_slice};
+use bytemuck::cast_slice;
 use sable_assets::AssetServer;
-use sable_resources::{GpuGeometry, ResourceManager, Scene, material::Material};
+use sable_core::handle::{GeometryHandle, MaterialHandle};
+use sable_resources::{GpuGeometry, GpuMaterial, ResourceManager, Scene};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
-    Color, ColorTargetState, ColorWrites, DepthStencilState, Device, Extent3d, FragmentState,
+    Color, ColorTargetState, ColorWrites, DepthStencilState, Device, Extent3d, Face, FragmentState,
     LoadOp, MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
     PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
     RenderPassDescriptor, RenderPipelineDescriptor, ShaderModule, ShaderStages, StoreOp, Texture,
     TextureDescriptor, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
     VertexState, include_wgsl,
-    util::{BufferInitDescriptor, DeviceExt},
 };
 
 use crate::{RenderCamera, camera::CameraUniform};
@@ -35,6 +35,8 @@ pub struct Renderer {
     camera_layout: BindGroupLayout,
     camera_bg: Option<BindGroup>,
     camera_uniform: Option<Buffer>,
+
+    renderables: Vec<Renderable>,
 
     depth_texture: Texture,
     depth_view: TextureView,
@@ -84,7 +86,7 @@ impl Renderer {
             camera_bg: None,
             camera_uniform: None,
             scene: None,
-
+            renderables: Vec::new(),
             depth_texture,
             depth_view,
         }
@@ -167,15 +169,19 @@ impl Renderer {
                 multiview_mask: None,
             });
 
-            for (handle, geometry) in &self.resources.geometry {
+            for renderable in &self.renderables {
+                let geometry = self.resources.geometry.get(renderable.geometry).unwrap();
+                let material = self.resources.material.get(renderable.material).unwrap();
+
                 let pipeline = self
                     .resources
                     .pipelines
-                    .get(handle)
+                    .get(renderable.geometry)
                     .expect("pipeline must exist");
                 rp.set_pipeline(pipeline);
                 rp.set_bind_group(0, cam_bg, &[]);
-                // rp.set_bind_group(0, &mat.bind_group, &[]);
+
+                rp.set_bind_group(1, material.bind_group(), &[]);
 
                 for (slot, buffer) in geometry.vertex_buffers().iter().enumerate() {
                     rp.set_vertex_buffer(slot as u32, buffer.slice(..));
@@ -201,13 +207,28 @@ impl Renderer {
         };
 
         for node in scene.nodes() {
-            if let Some(mesh) = scene.get_mesh(node)
-                && let Some(mesh_geo) = self.assets.geometry.get(mesh.geometry)
-            {
+            if let Some(mesh) = scene.get_mesh(node) {
+                let mesh_geo = self.assets.geometry.get(mesh.geometry).unwrap();
                 let geo = GpuGeometry::new(&mesh_geo, &self.device);
-                self.resources.geometry.insert(geo);
+                let geo_handle = self.resources.geometry.insert(geo);
+
+                let mesh_mat = self.assets.material.get(mesh.material).unwrap();
+                let mat = GpuMaterial::new(&mesh_mat, &self.device);
+                let mat_handle = self.resources.material.insert(mat);
+
+                self.renderables.push(Renderable {
+                    geometry: geo_handle,
+                    material: mat_handle,
+                });
             }
         }
+
+        // TEMP: Just to have something working
+        let mat = self
+            .resources
+            .material
+            .get(self.renderables[0].material)
+            .unwrap();
 
         let pipeline_layout = self
             .device
@@ -215,7 +236,7 @@ impl Renderer {
                 label: None,
                 // bind_group_layouts: &[Some(&material.bind_group_layout)],
                 // bind_group_layouts: &[],
-                bind_group_layouts: &[Some(&self.camera_layout)],
+                bind_group_layouts: &[Some(&self.camera_layout), Some(mat.layout())],
                 immediate_size: 0,
             });
 
@@ -233,6 +254,7 @@ impl Renderer {
                     },
                     primitive: PrimitiveState {
                         topology: wgpu::PrimitiveTopology::TriangleList, // TODO: Get from model
+                        cull_mode: Some(Face::Back),
                         ..Default::default()
                     },
                     depth_stencil: Some(DepthStencilState {
@@ -257,7 +279,6 @@ impl Renderer {
                     cache: None,
                 });
 
-            // self.material = Some(material);
             self.resources.pipelines.insert(geo_handle, pipeline);
         }
 
@@ -281,76 +302,7 @@ impl Renderer {
     }
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-struct MaterialUniform {
-    base_color: [f32; 4],
-    metallic: f32,
-    roughness: f32,
-    _pad: [f32; 2],
-}
-
-impl From<Material> for MaterialUniform {
-    fn from(mat: Material) -> Self {
-        Self {
-            base_color: mat.base_color.to_array(),
-            metallic: mat.metallic,
-            roughness: mat.roughness,
-            _pad: [0.0; 2],
-        }
-    }
-}
-
-impl From<&Material> for MaterialUniform {
-    fn from(mat: &Material) -> Self {
-        Self {
-            base_color: mat.base_color.to_array(),
-            metallic: mat.metallic,
-            roughness: mat.roughness,
-            _pad: [0.0; 2],
-        }
-    }
-}
-
-struct GpuMaterial {
-    bind_group: BindGroup,
-    bind_group_layout: BindGroupLayout,
-}
-
-impl GpuMaterial {
-    fn new(material: &Material, device: &Device) -> Self {
-        let bind_group_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("material_bgl"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX_FRAGMENT,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let buffer = device.create_buffer_init(&BufferInitDescriptor {
-            label: Some("material_uniform"),
-            contents: cast_slice(&[MaterialUniform::from(material)]),
-            usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
-        });
-
-        let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("material_bg"),
-            layout: &bind_group_layout,
-            entries: &[BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
-        });
-
-        Self {
-            bind_group,
-            bind_group_layout,
-        }
-    }
+struct Renderable {
+    geometry: GeometryHandle,
+    material: MaterialHandle,
 }
