@@ -3,8 +3,8 @@ use std::time::{Duration, Instant};
 use glam::{Vec3, vec2, vec3};
 use gpui::{
     Application, Bounds, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, Size, WgpuSurfaceHandle, Window, WindowBounds, WindowOptions, actions, div,
-    prelude::*, px, rgb, wgpu_surface,
+    Pixels, Point, ScrollDelta, ScrollWheelEvent, Size, WgpuSurfaceHandle, Window, WindowBounds,
+    WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
 };
 use sable::{Renderer, RendererConfig};
 use sable_assets::{AssetServer, scene_ext::SceneExt};
@@ -33,7 +33,7 @@ fn main() {
             },
             |window, cx| {
                 let surface = window
-                    .create_wgpu_surface(1000, 100, wgpu::TextureFormat::Rgba8UnormSrgb)
+                    .create_wgpu_surface(1000, 800, wgpu::TextureFormat::Rgba8UnormSrgb)
                     .expect("wgpu not supported on this machine");
 
                 let now = Instant::now();
@@ -119,10 +119,15 @@ impl Render for ViewerApp {
             let renderer = self.renderer.get_or_insert_with(|| {
                 let device = self.surface.device().clone();
                 let queue = self.surface.queue().clone();
+
                 RenderState::new(device, queue, w, h, self.surface.format())
             });
 
             // "tick" state here
+
+            if renderer.width != w || renderer.height != h {
+                renderer.resize(w, h);
+            }
 
             renderer.render(&view);
             drop(view);
@@ -157,6 +162,7 @@ impl Render for ViewerApp {
                     .on_any_mouse_down(cx.listener(Self::handle_any_mouse_down))
                     .capture_any_mouse_up(cx.listener(Self::handle_mouse_up))
                     .on_mouse_move(cx.listener(Self::handle_mouse_move))
+                    .on_scroll_wheel(cx.listener(Self::handle_scroll))
                     .child(wgpu_surface(self.surface.clone()).absolute().inset_0()),
             )
     }
@@ -200,6 +206,21 @@ impl ViewerApp {
             state.camera.rotate(vec2(delta.x.into(), delta.y.into()));
         }
     }
+
+    fn handle_scroll(
+        &mut self,
+        e: &ScrollWheelEvent,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
+    ) {
+        let Some(state) = self.renderer.as_mut() else {
+            return;
+        };
+
+        let delta = e.delta.pixel_delta(Pixels::from(100.0f32));
+
+        state.camera.zoom(delta.y.value());
+    }
 }
 
 #[allow(dead_code)]
@@ -208,6 +229,8 @@ struct RenderState {
     queue: Queue,
     renderer: Renderer,
     camera: OrbitCamera,
+    width: u32,
+    height: u32,
 }
 
 impl RenderState {
@@ -247,11 +270,20 @@ impl RenderState {
             queue,
             renderer,
             camera,
+            width: w,
+            height: h,
         }
     }
 
-    fn render(&self, view: &TextureView) {
+    fn render(&mut self, view: &TextureView) {
+        self.renderer.start_frame();
         self.renderer.render(&self.camera, view);
+    }
+
+    fn resize(&mut self, w: u32, h: u32) {
+        self.width = w;
+        self.height = h;
+        self.renderer.resize(w, h);
     }
 }
 
@@ -289,16 +321,29 @@ mod camera {
                 projection: proj::directx::perspective(fov_y_radians, aspect, near, far),
                 view: view::look_at_mat4(position, target, Vec3::Y),
 
-                radius: 1.0,
+                radius: 3.0,
                 yaw: 0.0,
                 pitch: 0.0,
                 sensitivity: 0.005,
             }
         }
 
+        pub fn zoom(&mut self, delta: f32) {
+            self.radius = (self.radius + delta * self.sensitivity).max(0.0);
+            let dir = Vec3::new(
+                self.yaw.cos() * self.pitch.cos(),
+                self.pitch.sin(),
+                self.yaw.sin() * self.pitch.cos(),
+            )
+            .normalize();
+
+            self.position = self.target - dir * self.radius;
+            self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);
+        }
+
         pub fn rotate(&mut self, delta: Vec2) {
             self.yaw += delta.x * self.sensitivity;
-            self.pitch = (self.pitch + delta.y * self.sensitivity).clamp(-1.5, 1.5);
+            self.pitch = (self.pitch - delta.y * self.sensitivity).clamp(-1.5, 1.5);
 
             let dir = Vec3::new(
                 self.yaw.cos() * self.pitch.cos(),

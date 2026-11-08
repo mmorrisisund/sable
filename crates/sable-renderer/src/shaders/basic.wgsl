@@ -17,6 +17,7 @@ struct CameraUniform {
 
 @group(0) @binding(0) var<uniform> u_camera: CameraUniform;
 
+
 // struct Material {
 //     base_color: vec4f,
 //     metallic: f32,

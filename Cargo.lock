@@ -4462,10 +4462,12 @@ checksum = "9774ba4a74de5f7b1c1451ed6cd5285a32eddb5cccb8cc655a4e50009e06477f"
 name = "sable"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "env_logger",
  "glam",
  "gltf",
  "gpui-ce",
+ "log",
  "sable_assets",
  "sable_core",
  "sable_renderer",
@@ -4491,6 +4493,8 @@ dependencies = [
 name = "sable_core"
 version = "0.1.0"
 dependencies = [
+ "glam",
+ "gltf",
  "slotmap",
  "thiserror 2.0.21",
 ]

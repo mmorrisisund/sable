@@ -175,5 +175,6 @@ fn prefab_node_from_gltf(node: &Node) -> PrefabNode {
         name: node.name().map(str::to_owned),
         mesh: None,
         children: node.children().map(|n| n.index()).collect(),
+        transform: node.transform().into(),
     }
 }

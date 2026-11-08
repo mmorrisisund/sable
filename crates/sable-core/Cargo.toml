@@ -4,5 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+glam.workspace = true
+gltf.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true

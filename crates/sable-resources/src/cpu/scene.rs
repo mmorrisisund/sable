@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
-use sable_core::handle::NodeHandle;
+use glam::Mat4;
+use sable_core::{handle::NodeHandle, transform::Transform};
 use slotmap::{SecondaryMap, SlotMap, SparseSecondaryMap};
 
 use crate::Mesh;
@@ -18,6 +19,10 @@ pub struct Scene {
 impl Scene {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn update(&mut self) {
+        update_heirarchy(&mut self.nodes, &self.roots);
     }
 }
 
@@ -67,7 +72,7 @@ impl Scene {
         // udpate child
         if let Some(child_node) = self.get_node_mut(child) {
             child_node.parent = Some(parent);
-            log::warn!("update transform or mark dirty");
+            child_node.transform.mark_dirty();
         }
     }
 
@@ -103,11 +108,52 @@ impl Scene {
 pub struct Node {
     parent: Option<NodeHandle>,
     children: Vec<NodeHandle>,
-    // transform
+
+    pub transform: Transform,
 }
 
 impl Node {
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+fn update_heirarchy(nodes: &mut SlotMap<NodeHandle, Node>, roots: &[NodeHandle]) {
+    // create stack - (node_h, current_world, changed_b)
+    let mut stack = Vec::new();
+    // let stack = Vec::<(NodeHandle, Transform, bool)>::new();
+
+    // add roots to stack
+    for &root in roots {
+        stack.push((root, Mat4::IDENTITY, false));
+    }
+
+    // while stack not empty
+    while let Some((handle, parent_world, parent_changed)) = stack.pop() {
+        // get node and update local_matrix
+
+        let (current_world, world_changed) = {
+            let Some(node) = nodes.get_mut(handle) else {
+                continue;
+            };
+
+            let local_changed = node.transform.update();
+            let world_changed = local_changed || parent_changed;
+
+            // if changes then update world matrix
+            if world_changed {
+                node.transform
+                    .set_world_matrix(parent_world * node.transform.local_matrix());
+            }
+
+            (node.transform.world_matrix(), world_changed)
+        };
+
+        // add childrent to stack
+        if let Some(node) = nodes.get(handle) {
+            for &child in &node.children {
+                stack.push((child, current_world, world_changed));
+            }
+        }
     }
 }

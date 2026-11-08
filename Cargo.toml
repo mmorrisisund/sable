@@ -50,7 +50,9 @@ sable_resources.workspace = true
 gltf.workspace = true
 
 [dev-dependencies]
+bytemuck.workspace = true
 env_logger.workspace = true
 glam.workspace = true
+log.workspace = true
 gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/wgpui" }
 wgpu.workspace = true

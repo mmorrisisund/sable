@@ -19,6 +19,7 @@ impl GpuGeometry {
         let mut buffers = Vec::new();
 
         for (kind, attr) in geometry.attributes() {
+            log::debug!("attr: {kind:?}");
             layouts.push(OwnedVertexLayout {
                 array_stride: attr.format.size(),
                 step_mode: VertexStepMode::Vertex,

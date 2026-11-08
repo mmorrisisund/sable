@@ -1,3 +1,4 @@
+use sable_core::transform::Transform;
 use sable_resources::Mesh;
 
 #[derive(Default)]
@@ -10,5 +11,5 @@ pub struct PrefabNode {
     pub name: Option<String>,
     pub mesh: Option<Mesh>,
     pub children: Vec<usize>,
-    // transform
+    pub transform: Transform,
 }

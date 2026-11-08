@@ -4,10 +4,12 @@ use sable_resources::{GpuGeometry, ResourceManager, Scene, material::Material};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
-    Color, ColorTargetState, ColorWrites, Device, FragmentState, LoadOp, MultisampleState,
-    Operations, PipelineCompilationOptions, PipelineLayoutDescriptor, PrimitiveState, Queue,
-    RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor, ShaderModule,
-    ShaderStages, StoreOp, TextureFormat, TextureView, VertexState, include_wgsl,
+    Color, ColorTargetState, ColorWrites, DepthStencilState, Device, Extent3d, FragmentState,
+    LoadOp, MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
+    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipelineDescriptor, ShaderModule, ShaderStages, StoreOp, Texture,
+    TextureDescriptor, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
+    VertexState, include_wgsl,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
@@ -33,6 +35,9 @@ pub struct Renderer {
     camera_layout: BindGroupLayout,
     camera_bg: Option<BindGroup>,
     camera_uniform: Option<Buffer>,
+
+    depth_texture: Texture,
+    depth_view: TextureView,
 }
 
 impl Renderer {
@@ -52,6 +57,22 @@ impl Renderer {
             }],
         });
 
+        let depth_texture = device.create_texture(&TextureDescriptor {
+            label: Some("depth_t"),
+            size: Extent3d {
+                width: config.width,
+                height: config.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::Depth32Float,
+            usage: TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let depth_view = depth_texture.create_view(&TextureViewDescriptor::default());
+
         Self {
             device,
             queue,
@@ -63,12 +84,44 @@ impl Renderer {
             camera_bg: None,
             camera_uniform: None,
             scene: None,
+
+            depth_texture,
+            depth_view,
         }
     }
 
     pub fn set_scene(&mut self, scene: Scene) {
         self.scene = Some(scene);
         self.extract_scene();
+    }
+
+    pub fn start_frame(&mut self) {
+        let Some(scene) = &mut self.scene else {
+            return;
+        };
+
+        scene.update();
+    }
+
+    pub fn resize(&mut self, width: u32, height: u32) {
+        let depth_texture = self.device.create_texture(&TextureDescriptor {
+            label: Some("depth_t"),
+            size: Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: TextureFormat::Depth32Float,
+            usage: TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let depth_view = depth_texture.create_view(&TextureViewDescriptor::default());
+
+        self.depth_texture = depth_texture;
+        self.depth_view = depth_view;
     }
 
     pub fn render(&self, camera: &impl RenderCamera, view: &TextureView) {
@@ -101,7 +154,14 @@ impl Renderer {
                         store: StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(Operations {
+                        load: LoadOp::Load,
+                        store: StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 timestamp_writes: None,
                 occlusion_query_set: None,
                 multiview_mask: None,
@@ -175,7 +235,13 @@ impl Renderer {
                         topology: wgpu::PrimitiveTopology::TriangleList, // TODO: Get from model
                         ..Default::default()
                     },
-                    depth_stencil: None,
+                    depth_stencil: Some(DepthStencilState {
+                        format: TextureFormat::Depth32Float,
+                        depth_compare: Some(wgpu::CompareFunction::Always),
+                        depth_write_enabled: Some(true),
+                        stencil: Default::default(),
+                        bias: Default::default(),
+                    }),
                     multisample: MultisampleState::default(),
                     fragment: Some(FragmentState {
                         module: &self.shader,
