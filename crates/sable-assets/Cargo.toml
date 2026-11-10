@@ -9,6 +9,7 @@ sable_resources.workspace = true
 
 bytemuck.workspace = true
 gltf.workspace = true
+image.workspace = true
 log.workspace = true
 parking_lot.workspace = true
 slotmap.workspace = true

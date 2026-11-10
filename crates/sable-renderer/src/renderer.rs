@@ -1,7 +1,7 @@
 use bytemuck::cast_slice;
 use sable_assets::AssetServer;
 use sable_core::handle::{GeometryHandle, MaterialHandle};
-use sable_resources::{GpuGeometry, GpuMaterial, ResourceManager, Scene};
+use sable_resources::Scene;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
@@ -13,7 +13,7 @@ use wgpu::{
     VertexState, include_wgsl,
 };
 
-use crate::{RenderCamera, camera::CameraUniform};
+use crate::{RenderCamera, ResourceManager, camera::CameraUniform};
 
 pub struct RendererConfig {
     pub width: u32,
@@ -74,13 +74,14 @@ impl Renderer {
             view_formats: &[],
         });
         let depth_view = depth_texture.create_view(&TextureViewDescriptor::default());
+        let resources = ResourceManager::new(device.clone(), queue.clone());
 
         Self {
             device,
             queue,
             config,
             assets,
-            resources: ResourceManager::default(),
+            resources,
             shader,
             camera_layout,
             camera_bg: None,
@@ -170,14 +171,22 @@ impl Renderer {
             });
 
             for renderable in &self.renderables {
-                let geometry = self.resources.geometry.get(renderable.geometry).unwrap();
-                let material = self.resources.material.get(renderable.material).unwrap();
-
+                let geometry = self
+                    .resources
+                    .geometry
+                    .get(renderable.geometry)
+                    .expect("resources must exist");
+                let material = self
+                    .resources
+                    .material
+                    .get(renderable.material)
+                    .expect("resources must exist");
                 let pipeline = self
                     .resources
                     .pipelines
                     .get(renderable.geometry)
                     .expect("pipeline must exist");
+
                 rp.set_pipeline(pipeline);
                 rp.set_bind_group(0, cam_bg, &[]);
 
@@ -209,77 +218,67 @@ impl Renderer {
         for node in scene.nodes() {
             if let Some(mesh) = scene.get_mesh(node) {
                 let mesh_geo = self.assets.geometry.get(mesh.geometry).unwrap();
-                let geo = GpuGeometry::new(&mesh_geo, &self.device);
-                let geo_handle = self.resources.geometry.insert(geo);
+                let geo_handle = self.resources.add_geometry(&mesh_geo);
+                let mat_handle = self.resources.add_material(mesh.material, &self.assets);
 
-                let mesh_mat = self.assets.material.get(mesh.material).unwrap();
-                let mat = GpuMaterial::new(&mesh_mat, &self.device);
-                let mat_handle = self.resources.material.insert(mat);
+                let geometry = self.resources.geometry.get(geo_handle).unwrap();
+                let material = self.resources.material.get(mat_handle).unwrap();
+
+                let pipeline_layout =
+                    self.device
+                        .create_pipeline_layout(&PipelineLayoutDescriptor {
+                            label: None,
+                            bind_group_layouts: &[
+                                Some(&self.camera_layout),
+                                Some(material.layout()),
+                            ],
+                            immediate_size: 0,
+                        });
+                let pipeline = self
+                    .device
+                    .create_render_pipeline(&RenderPipelineDescriptor {
+                        label: Some("renderer pipeline"),
+                        layout: Some(&pipeline_layout),
+                        vertex: VertexState {
+                            module: &self.shader,
+                            entry_point: Some("vs_main"),
+                            compilation_options: Default::default(),
+                            buffers: &geometry.vertex_layout().wgpu_layout(),
+                        },
+                        primitive: PrimitiveState {
+                            topology: wgpu::PrimitiveTopology::TriangleList, // TODO: Get from model
+                            cull_mode: Some(Face::Back),
+                            ..Default::default()
+                        },
+                        depth_stencil: Some(DepthStencilState {
+                            format: TextureFormat::Depth32Float,
+                            depth_compare: Some(wgpu::CompareFunction::Always),
+                            depth_write_enabled: Some(true),
+                            stencil: Default::default(),
+                            bias: Default::default(),
+                        }),
+                        multisample: MultisampleState::default(),
+                        fragment: Some(FragmentState {
+                            module: &self.shader,
+                            entry_point: Some("fs_main"),
+                            compilation_options: PipelineCompilationOptions::default(),
+                            targets: &[Some(ColorTargetState {
+                                format: self.config.color_format,
+                                blend: None,
+                                write_mask: ColorWrites::all(),
+                            })],
+                        }),
+                        multiview_mask: None,
+                        cache: None,
+                    });
+
+                self.resources.pipelines.insert(geo_handle, pipeline);
 
                 self.renderables.push(Renderable {
                     geometry: geo_handle,
                     material: mat_handle,
                 });
             }
-        }
-
-        // TEMP: Just to have something working
-        let mat = self
-            .resources
-            .material
-            .get(self.renderables[0].material)
-            .unwrap();
-
-        let pipeline_layout = self
-            .device
-            .create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: None,
-                // bind_group_layouts: &[Some(&material.bind_group_layout)],
-                // bind_group_layouts: &[],
-                bind_group_layouts: &[Some(&self.camera_layout), Some(mat.layout())],
-                immediate_size: 0,
-            });
-
-        for (geo_handle, gpu_geo) in &self.resources.geometry {
-            let pipeline = self
-                .device
-                .create_render_pipeline(&RenderPipelineDescriptor {
-                    label: Some("renderer pipeline"),
-                    layout: Some(&pipeline_layout),
-                    vertex: VertexState {
-                        module: &self.shader,
-                        entry_point: Some("vs_main"),
-                        compilation_options: Default::default(),
-                        buffers: &gpu_geo.vertex_layout().wgpu_layout(),
-                    },
-                    primitive: PrimitiveState {
-                        topology: wgpu::PrimitiveTopology::TriangleList, // TODO: Get from model
-                        cull_mode: Some(Face::Back),
-                        ..Default::default()
-                    },
-                    depth_stencil: Some(DepthStencilState {
-                        format: TextureFormat::Depth32Float,
-                        depth_compare: Some(wgpu::CompareFunction::Always),
-                        depth_write_enabled: Some(true),
-                        stencil: Default::default(),
-                        bias: Default::default(),
-                    }),
-                    multisample: MultisampleState::default(),
-                    fragment: Some(FragmentState {
-                        module: &self.shader,
-                        entry_point: Some("fs_main"),
-                        compilation_options: PipelineCompilationOptions::default(),
-                        targets: &[Some(ColorTargetState {
-                            format: self.config.color_format,
-                            blend: None,
-                            write_mask: ColorWrites::all(),
-                        })],
-                    }),
-                    multiview_mask: None,
-                    cache: None,
-                });
-
-            self.resources.pipelines.insert(geo_handle, pipeline);
         }
 
         let uniform = self.device.create_buffer(&BufferDescriptor {

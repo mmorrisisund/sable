@@ -1,10 +1,10 @@
 mod cpu;
-mod gpu;
 
 pub use cpu::{
     geometry::{self, Attribute, AttributeKind, Geometry, IndexAttribute},
+    image::{self, Image},
     material::{self, Material},
     mesh::{self, Mesh},
     scene::Scene,
+    texture,
 };
-pub use gpu::{geometry::GpuGeometry, manager::ResourceManager, material::GpuMaterial};

@@ -38,6 +38,7 @@ pub enum AttributeKind {
     Position,
     Color,
     Normal,
+    TexCoords,
 }
 
 impl AttributeKind {
@@ -46,6 +47,7 @@ impl AttributeKind {
             Self::Position => 0,
             Self::Color => 1,
             Self::Normal => 2,
+            Self::TexCoords => 3,
         }
     }
 }

@@ -1,12 +1,29 @@
-use std::{fs::File, io::Read, path::PathBuf, sync::Arc};
-
-use gltf::{Gltf, Node, Primitive, buffer::Source, mesh::Mode};
-use sable_core::{
-    error::Result,
-    handle::{GeometryHandle, MaterialHandle},
+use std::{
+    fs::File,
+    io::Read,
+    path::{Path, PathBuf},
+    sync::Arc,
 };
-use sable_resources::{Attribute, AttributeKind, Geometry, IndexAttribute, Material, Mesh};
-use wgpu::{IndexFormat, PrimitiveTopology, VertexFormat};
+
+use ::image::ImageFormat;
+use gltf::{
+    Gltf, Node, Primitive,
+    buffer::Source,
+    mesh::Mode,
+    texture::{MagFilter, MinFilter, Sampler, WrappingMode},
+};
+use sable_core::{
+    error::{AssetError, Error, Result},
+    handle::{GeometryHandle, ImageHandle, MaterialHandle},
+};
+use sable_resources::{
+    Attribute, AttributeKind, Geometry, Image, IndexAttribute, Material, Mesh,
+    image::{ColorSpace, ImageDimension, PixelFormat},
+    texture::{Texture, TextureSampler},
+};
+use wgpu::{
+    AddressMode, FilterMode, IndexFormat, MipmapFilterMode, PrimitiveTopology, VertexFormat,
+};
 
 use crate::{
     AssetServer,
@@ -19,6 +36,8 @@ pub struct GltfLoader {
     buffers: Vec<Vec<u8>>,
     prefab_nodes: Vec<PrefabNode>,
     materials: Vec<MaterialHandle>,
+
+    image_handles: Vec<ImageHandle>,
 }
 
 impl GltfLoader {
@@ -28,6 +47,8 @@ impl GltfLoader {
             buffers: Vec::new(),
             prefab_nodes: Vec::new(),
             materials: Vec::new(),
+
+            image_handles: Vec::new(),
         }
     }
 
@@ -39,45 +60,92 @@ impl GltfLoader {
 
         let gltf = gltf::Gltf::from_reader_without_validation(file).unwrap();
 
-        self.load_buffers(&gltf, root);
+        self.load_buffers(&gltf, &root)?;
 
-        // load images
+        self.load_images(&gltf, &root)?;
         // load textures
         self.load_materials(&gltf);
 
         Ok(self.build_prefab(&gltf))
     }
 
-    fn load_buffers(&mut self, gltf: &Gltf, root: PathBuf) {
+    fn load_buffers(&mut self, gltf: &Gltf, root: &Path) -> Result<()> {
         let mut data = Vec::new();
-        // TODO: for each buffer determine source.  If bin then use blob, else load from uri path
 
         for buffer in gltf.buffers() {
             let blob = gltf.blob.clone();
             match buffer.source() {
+                // TODO: Copies blob for every buffer.  Normally one so not a big deal, but can this be optimized to move only applicable data?
                 Source::Bin => data.push(blob.unwrap()),
                 Source::Uri(name) => {
                     let path = root.join(name);
-                    log::debug!("{path:?}");
                     let mut file = File::open(path).unwrap();
                     let mut bytes = Vec::new();
-                    let _ = file.read_to_end(&mut bytes);
+                    file.read_to_end(&mut bytes)?;
                     data.push(bytes);
                 }
             }
         }
 
         self.buffers = data;
+        Ok(())
+    }
+
+    fn load_images(&mut self, gltf: &Gltf, root: &PathBuf) -> Result<()> {
+        use gltf::image;
+
+        for gltf_img in gltf.images() {
+            let (bytes, mime_type) = match gltf_img.source() {
+                image::Source::View { view, mime_type } => {
+                    let start = view.offset();
+                    let end = start + view.length();
+                    let bytes = self.buffers[view.buffer().index()][start..end].to_vec();
+
+                    (bytes, Some(mime_type))
+                }
+                image::Source::Uri { uri, mime_type } => {
+                    let path = PathBuf::from(root).join(uri);
+                    let bytes = load_bytes_from_uri(path)?;
+                    (bytes, mime_type)
+                }
+            };
+
+            let decoded = decode_image_bytes(&bytes, mime_type)?;
+            let image = self.assets.image.add(Image {
+                data: decoded.data,
+                width: decoded.width,
+                height: decoded.height,
+                format: PixelFormat::Rgba8Unorm,
+                dimension: ImageDimension::D2,
+            });
+
+            self.image_handles.push(image);
+        }
+
+        Ok(())
     }
 
     fn load_materials(&mut self, gltf: &Gltf) {
         for gltf_mat in gltf.materials() {
             let pbr = gltf_mat.pbr_metallic_roughness();
 
+            let base_color_texture = if let Some(tex_info) = pbr.base_color_texture() {
+                let img_handle = self.image_handles[tex_info.texture().source().index()];
+                let tex = Texture {
+                    image: img_handle,
+                    color_space: ColorSpace::Srgb,
+                    sampler: gltf_to_engine_sampler(tex_info.texture().sampler()),
+                };
+                self.assets.texture.add(tex)
+            } else {
+                continue;
+            };
+
             let handle = self.assets.material.add(Material {
-                base_color: pbr.base_color_factor().into(),
-                metallic: pbr.metallic_factor(),
-                roughness: pbr.roughness_factor(),
+                base_color_factor: pbr.base_color_factor().into(),
+                metallic_factor: pbr.metallic_factor(),
+                roughness_factor: pbr.roughness_factor(),
+                base_color_texture,
             });
 
             self.materials.push(handle);
@@ -193,13 +261,69 @@ impl GltfLoader {
         } else {
             vec![[0.0; 3]]
         };
-
         geometry.set_attribute(
             Attribute::new(&normals, VertexFormat::Float32x3),
             AttributeKind::Normal,
         );
+
+        let coords = if let Some(coords) = reader.read_tex_coords(0) {
+            coords.into_f32().collect()
+        } else {
+            vec![[0.0; 2]]
+        };
+        geometry.set_attribute(
+            Attribute::new(&coords, VertexFormat::Float32x2),
+            AttributeKind::TexCoords,
+        );
     }
 }
+
+// TODO: can(should?) this be async
+fn load_bytes_from_uri(path: PathBuf) -> Result<Vec<u8>> {
+    // TODO: Handle data uris
+    let mut bytes = Vec::new();
+
+    let mut f = std::fs::File::open(path)?;
+    f.read_to_end(&mut bytes)?;
+
+    Ok(bytes)
+}
+
+/// Intermediate data structure to image data before saving to the asset server
+struct DecodedImage {
+    data: Vec<u8>,
+    width: u32,
+    height: u32,
+}
+
+/// Used to decode raw bytes into specific image
+fn decode_image_bytes(bytes: &[u8], mime_type: Option<&str>) -> Result<DecodedImage> {
+    let res = if let Some(mime_type) = mime_type {
+        match ImageFormat::from_mime_type(mime_type) {
+            Some(format) => ::image::load_from_memory_with_format(bytes, format),
+            None => ::image::load_from_memory(bytes),
+        }
+    } else {
+        ::image::load_from_memory(bytes)
+    };
+
+    match res {
+        Ok(img) => {
+            let rgba = img.into_rgba8();
+
+            Ok(DecodedImage {
+                data: rgba.to_vec(),
+                width: rgba.width(),
+                height: rgba.height(),
+            })
+        }
+        Err(e) => Err(Error::Asset(AssetError::from(e))),
+    }
+}
+
+//------------------------------
+// gltf helpers
+//------------------------------
 
 fn prefab_node_from_gltf(node: &Node) -> PrefabNode {
     PrefabNode {
@@ -207,5 +331,61 @@ fn prefab_node_from_gltf(node: &Node) -> PrefabNode {
         mesh: None,
         children: node.children().map(|n| n.index()).collect(),
         transform: node.transform().into(),
+    }
+}
+
+fn gltf_to_engine_sampler(value: Sampler) -> TextureSampler {
+    TextureSampler {
+        address_mode_u: wrapping_mode(value.wrap_s()),
+        address_mode_v: wrapping_mode(value.wrap_t()),
+        address_mode_w: AddressMode::ClampToEdge,
+        mag_filter: mag_filter_mode(value.mag_filter()),
+        min_filter: min_filter_mode(value.min_filter()),
+        mipmap_filter: mipmap_filter_mode(value.min_filter()),
+    }
+}
+
+fn wrapping_mode(mode: WrappingMode) -> AddressMode {
+    match mode {
+        WrappingMode::ClampToEdge => AddressMode::ClampToEdge,
+        WrappingMode::MirroredRepeat => AddressMode::MirrorRepeat,
+        WrappingMode::Repeat => AddressMode::Repeat,
+    }
+}
+
+fn mag_filter_mode(mode: Option<MagFilter>) -> FilterMode {
+    if let Some(mode) = mode {
+        match mode {
+            MagFilter::Nearest => FilterMode::Nearest,
+            MagFilter::Linear => FilterMode::Linear,
+        }
+    } else {
+        FilterMode::Nearest
+    }
+}
+
+fn min_filter_mode(mode: Option<MinFilter>) -> FilterMode {
+    use MinFilter::*;
+
+    if let Some(mode) = mode {
+        match mode {
+            Nearest | NearestMipmapLinear | NearestMipmapNearest => FilterMode::Nearest,
+            Linear | LinearMipmapLinear | LinearMipmapNearest => FilterMode::Linear,
+        }
+    } else {
+        FilterMode::Nearest
+    }
+}
+
+fn mipmap_filter_mode(mode: Option<MinFilter>) -> MipmapFilterMode {
+    use MinFilter::*;
+
+    if let Some(mode) = mode {
+        match mode {
+            Nearest | NearestMipmapNearest | LinearMipmapNearest => MipmapFilterMode::Nearest,
+            Linear | NearestMipmapLinear | LinearMipmapLinear => MipmapFilterMode::Linear,
+        }
+    } else {
+        MipmapFilterMode::Nearest
     }
 }

@@ -1,9 +1,12 @@
+use sable_core::handle::GeometryHandle;
 use wgpu::{
-    Buffer, BufferUsages, Device, IndexFormat, VertexAttribute, VertexBufferLayout, VertexStepMode,
+    Buffer, BufferUsages, IndexFormat, VertexAttribute, VertexBufferLayout, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
-use crate::{AttributeKind, Geometry};
+use sable_resources::{AttributeKind, Geometry};
+
+use crate::gpu::manager::ResourceManager;
 
 pub struct GpuGeometry {
     layout_info: GeneratedVertexLayout,
@@ -13,8 +16,8 @@ pub struct GpuGeometry {
     count: u32,
 }
 
-impl GpuGeometry {
-    pub fn new(geometry: &Geometry, device: &Device) -> Self {
+impl ResourceManager {
+    pub fn add_geometry(&mut self, geometry: &Geometry) -> GeometryHandle {
         let mut layouts = Vec::with_capacity(geometry.attributes().len());
         let mut buffers = Vec::new();
 
@@ -30,7 +33,7 @@ impl GpuGeometry {
                 }],
             });
 
-            buffers.push(device.create_buffer_init(&BufferInitDescriptor {
+            buffers.push(self.device.create_buffer_init(&BufferInitDescriptor {
                 label: None,
                 contents: attr.data(),
                 usage: BufferUsages::COPY_DST | BufferUsages::VERTEX,
@@ -38,7 +41,7 @@ impl GpuGeometry {
         }
 
         let index_buffer = geometry.get_index_attribute().map(|attr| {
-            device.create_buffer_init(&BufferInitDescriptor {
+            self.device.create_buffer_init(&BufferInitDescriptor {
                 label: Some("idx_buf"),
                 contents: attr.data(),
                 usage: BufferUsages::COPY_DST | BufferUsages::INDEX,
@@ -57,15 +60,17 @@ impl GpuGeometry {
             0
         };
 
-        Self {
+        self.geometry.insert(GpuGeometry {
             layout_info: GeneratedVertexLayout { layouts },
             buffers,
             index_buffer,
             index_format,
             count,
-        }
+        })
     }
+}
 
+impl GpuGeometry {
     pub fn vertex_layout(&self) -> &GeneratedVertexLayout {
         &self.layout_info
     }

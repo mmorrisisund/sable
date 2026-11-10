@@ -1,28 +1,4 @@
-# glTF Renderer Development Checklist
-
-This checklist uses every model in the Khronos glTF Sample Assets repository as a development milestone for a renderer. It is organized from minimal static geometry through core PBR, then extensions, with animation, morphing, and skinning deliberately placed last.
-
-## How to use this checklist
-
-- Select one canonical variant for each model, preferably a binary `.glb` when available.
-- Treat compressed or alternative texture variants as additional tests attached to the same model.
-- Do not mark a model complete merely because it loads. Require correct rendering, no validation errors, and an approved screenshot.
-- Record unsupported required extensions explicitly rather than silently ignoring them.
-- Keep a machine-readable feature manifest beside the checklist.
-
-## Completion criteria for every model
-
-- [ ] Asset parses without structural or bounds errors.
-- [ ] Required resources resolve correctly.
-- [ ] Required features and extensions are detected.
-- [ ] Unsupported required extensions fail clearly.
-- [ ] Render completes without graphics API validation errors.
-- [ ] Output matches an approved reference or golden image.
-- [ ] Repeated load/render/unload does not leak resources.
-
----
-
-## Phase 0: Loader, GLB, and test harness
+# # Phase 0: Loader, GLB, and test harness
 
 Build deterministic loading, validation, diagnostics, screenshot capture, and golden-image comparison before feature work begins.
 
@@ -39,7 +15,7 @@ Build deterministic loading, validation, diagnostics, screenshot capture, and go
 
 Complete static core mesh ingestion while rendering with a simple diagnostic shader.
 
-- [ ] **`Cube`**
+- [x] **`Cube`**
   - **Tests:** Hard edges, duplicated vertices, flat face normals, and winding.
 - [ ] **`BoxInterleaved`**
   - **Tests:** Interleaved attributes, byteStride, accessor offsets, and alignment.

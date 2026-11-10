@@ -4,5 +4,7 @@ new_key_type! {
     pub struct PrefabHandle;
     pub struct GeometryHandle;
     pub struct MaterialHandle;
+    pub struct ImageHandle;
+    pub struct TextureHandle;
     pub struct NodeHandle;
 }
