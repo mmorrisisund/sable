@@ -321,7 +321,7 @@ mod camera {
                 projection: proj::directx::perspective(fov_y_radians, aspect, near, far),
                 view: view::look_at_mat4(position, target, Vec3::Y),
 
-                radius: 3.0,
+                radius: target.distance(position),
                 yaw: 0.0,
                 pitch: 0.0,
                 sensitivity: 0.005,
@@ -331,19 +331,19 @@ mod camera {
         pub fn zoom(&mut self, delta: f32) {
             self.radius = (self.radius + delta * self.sensitivity).max(0.0);
             let dir = Vec3::new(
-                self.yaw.cos() * self.pitch.cos(),
-                self.pitch.sin(),
                 self.yaw.sin() * self.pitch.cos(),
+                self.pitch.sin(),
+                self.yaw.cos() * self.pitch.cos(),
             )
             .normalize();
 
-            self.position = self.target - dir * self.radius;
+            self.position = self.target - dir * -self.radius;
             self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);
         }
 
         pub fn rotate(&mut self, delta: Vec2) {
             self.yaw += delta.x * self.sensitivity;
-            self.pitch = (self.pitch - delta.y * self.sensitivity).clamp(-1.5, 1.5);
+            self.pitch = (self.pitch + delta.y * self.sensitivity).clamp(-1.5, 1.5);
 
             let dir = Vec3::new(
                 self.yaw.cos() * self.pitch.cos(),
@@ -352,7 +352,7 @@ mod camera {
             )
             .normalize();
 
-            self.position = self.target - dir * self.radius;
+            self.position = self.target - dir * -self.radius;
             self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);
         }
     }
