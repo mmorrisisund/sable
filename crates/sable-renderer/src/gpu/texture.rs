@@ -10,7 +10,7 @@ use wgpu::{
 use crate::ResourceManager;
 
 pub struct TextureBinding {
-    #[allow(dead_code, reason = "texture kept alive for view")]
+    #[allow(dead_code, reason = "texture kept alive for view")] // TODO: Is this actually needed?
     texture: wgpu::Texture,
     pub texture_view: TextureView,
     pub sampler: Sampler,
@@ -20,7 +20,7 @@ pub struct TextureBinding {
 // ResourceManager extensions
 //------------------------------
 impl ResourceManager {
-    pub fn get_or_create_texture(
+    pub fn get_or_create_texture_binding(
         &mut self,
         texture: &Arc<Texture>,
         assets: &AssetServer,
@@ -72,3 +72,53 @@ impl ResourceManager {
         }
     }
 }
+
+// /// Global fallback textures
+// pub struct SystemTextures {
+//     pub white_2d: TextureView,
+//     pub black_2d: TextureView,
+//     pub normal_2d: TextureView,
+// }
+
+// impl SystemTextures {
+//     pub fn new(device: &Device, queue: &Queue) -> Self {
+//         let white_2d = create_1x1_rgba(device, queue, [255, 255, 255, 255], "sys_white_2d");
+//         let black_2d = create_1x1_rgba(device, queue, [0, 0, 0, 255], "sys_black_2d");
+//         let normal_2d = create_1x1_rgba(device, queue, [128, 128, 255, 255], "sys_normal_2d");
+
+//         Self {
+//             white_2d,
+//             black_2d,
+//             normal_2d,
+//         }
+//     }
+// }
+
+// fn create_1x1_rgba(
+//     device: &Device,
+//     queue: &Queue,
+//     color: [u8; 4],
+//     name: &'static str,
+// ) -> TextureView {
+//     let texture = device.create_texture_with_data(
+//         queue,
+//         &TextureDescriptor {
+//             label: Some(name),
+//             size: Extent3d {
+//                 width: 1,
+//                 height: 1,
+//                 depth_or_array_layers: 1,
+//             },
+//             mip_level_count: 1,
+//             sample_count: 1,
+//             dimension: TextureDimension::D2,
+//             format: TextureFormat::Rgba8Unorm,
+//             usage: TextureUsages::TEXTURE_BINDING,
+//             view_formats: &[],
+//         },
+//         TextureDataOrder::LayerMajor,
+//         &color,
+//     );
+
+//     texture.create_view(&TextureViewDescriptor::default())
+// }

@@ -7,7 +7,7 @@ use crate::{GpuGeometry, GpuMaterial};
 pub struct ResourceManager {
     pub(super) device: Device,
     pub(super) queue: Queue,
-
+    // pub(super) sys_textures: SystemTextures,
     pub geometry: SlotMap<GeometryHandle, GpuGeometry>,
     pub material: SlotMap<MaterialHandle, GpuMaterial>,
     pub pipelines: SecondaryMap<GeometryHandle, RenderPipeline>,
@@ -15,9 +15,12 @@ pub struct ResourceManager {
 
 impl ResourceManager {
     pub fn new(device: Device, queue: Queue) -> Self {
+        // let sys_textures = SystemTextures::new(&device, &queue);
+
         Self {
             device,
             queue,
+            // sys_textures,
             geometry: SlotMap::default(),
             material: SlotMap::default(),
             pipelines: SecondaryMap::default(),

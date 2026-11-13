@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     fs::File,
     io::Read,
     path::{Path, PathBuf},
@@ -132,13 +133,14 @@ impl GltfLoader {
             let base_color_texture = if let Some(tex_info) = pbr.base_color_texture() {
                 let img_handle = self.image_handles[tex_info.texture().source().index()];
                 let tex = Texture {
+                    name: Some(Cow::Owned("base_color_texture".to_string())),
                     image: img_handle,
                     color_space: ColorSpace::Srgb,
                     sampler: gltf_to_engine_sampler(tex_info.texture().sampler()),
                 };
                 self.assets.texture.add(tex)
             } else {
-                continue;
+                self.assets.default_white
             };
 
             let handle = self.assets.material.add(Material {

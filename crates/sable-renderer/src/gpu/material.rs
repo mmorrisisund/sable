@@ -26,12 +26,13 @@ impl ResourceManager {
             .material
             .get(handle)
             .expect("GPU material resources must be created");
+
         let texture_asset = assets
             .texture
             .get(material_asset.base_color_texture)
             .unwrap();
 
-        let texture = self.get_or_create_texture(&texture_asset, assets);
+        let texture = self.get_or_create_texture_binding(&texture_asset, assets);
 
         let bind_group_layout = self
             .device

@@ -8,6 +8,19 @@ pub struct Image {
     pub dimension: ImageDimension,
 }
 
+impl Image {
+    /// Create a 1x1 solid color pixel
+    pub fn solid_color(color: [u8; 4]) -> Self {
+        Self {
+            data: color.to_vec(),
+            width: 1,
+            height: 1,
+            format: PixelFormat::Rgba8Unorm,
+            dimension: ImageDimension::D2,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub enum PixelFormat {
     Rgba8Unorm,
