@@ -8,6 +8,7 @@ sable_core.workspace = true
 sable_resources.workspace = true
 
 bytemuck.workspace = true
+glam.workspace = true
 gltf.workspace = true
 image.workspace = true
 log.workspace = true

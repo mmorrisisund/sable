@@ -48,6 +48,7 @@ fn vs_main(in: VertexInput) ->  VertexOutput {
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var albedo = textureSample(albedo_t, albedo_s, in.tex_coords).rgb;
     albedo *= u_material.base_color.rgb;
+    albedo *= in.color;
 
     return vec4f(albedo, 1.0);
 }

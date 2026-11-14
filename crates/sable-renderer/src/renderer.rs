@@ -234,6 +234,7 @@ impl Renderer {
                             ],
                             immediate_size: 0,
                         });
+
                 let pipeline = self
                     .device
                     .create_render_pipeline(&RenderPipelineDescriptor {

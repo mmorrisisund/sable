@@ -17,9 +17,9 @@ Complete static core mesh ingestion while rendering with a simple diagnostic sha
 
 - [x] **`Cube`**
   - **Tests:** Hard edges, duplicated vertices, flat face normals, and winding.
-- [ ] **`BoxInterleaved`**
+- [x] **`BoxInterleaved`**
   - **Tests:** Interleaved attributes, byteStride, accessor offsets, and alignment.
-- [ ] **`BoxVertexColors`**
+- [x] **`BoxVertexColors`**
   - **Tests:** COLOR_0 routing and normalized or floating-point vertex colors.
 - [ ] **`VertexColorTest`**
   - **Tests:** Vertex color component formats and multiplication with base color.

@@ -7,6 +7,7 @@ use std::{
 };
 
 use ::image::ImageFormat;
+use glam::Vec4;
 use gltf::{
     Gltf, Node, Primitive,
     buffer::Source,
@@ -37,17 +38,27 @@ pub struct GltfLoader {
     buffers: Vec<Vec<u8>>,
     prefab_nodes: Vec<PrefabNode>,
     materials: Vec<MaterialHandle>,
+    default_material: MaterialHandle,
 
     image_handles: Vec<ImageHandle>,
 }
 
 impl GltfLoader {
     pub fn new(assets: Arc<AssetServer>) -> Self {
+        let mat = Material {
+            base_color_factor: Vec4::ONE,
+            metallic_factor: 1.0,
+            roughness_factor: 1.0,
+            base_color_texture: assets.default_white,
+        };
+        let default_material = assets.material.add(mat);
+
         Self {
             assets,
             buffers: Vec::new(),
             prefab_nodes: Vec::new(),
             materials: Vec::new(),
+            default_material,
 
             image_handles: Vec::new(),
         }
@@ -194,7 +205,11 @@ impl GltfLoader {
     fn build_mesh(&mut self, primitive: &Primitive) -> Mesh {
         let geometry = self.build_geometry(primitive);
 
-        let material = self.materials[primitive.material().index().unwrap()];
+        let material = if let Some(idx) = primitive.material().index() {
+            self.materials[idx]
+        } else {
+            self.default_material
+        };
 
         Mesh { geometry, material }
     }
