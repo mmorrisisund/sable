@@ -4892,10 +4892,22 @@ dependencies = [
  "gltf",
  "gpui-ce",
  "log",
+ "sable_app",
  "sable_assets",
  "sable_core",
  "sable_renderer",
  "sable_resources",
+ "wgpu",
+]
+
+[[package]]
+name = "sable_app"
+version = "0.1.0"
+dependencies = [
+ "glam",
+ "log",
+ "sable_assets",
+ "sable_renderer",
  "wgpu",
 ]
 

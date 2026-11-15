@@ -13,7 +13,11 @@ use wgpu::{
     VertexState, include_wgsl,
 };
 
-use crate::{RenderCamera, ResourceManager, camera::CameraUniform};
+use crate::{
+    RenderCamera, ResourceManager,
+    camera::CameraUniform,
+    settings::{RendererInitConfig, RendererSettings},
+};
 
 pub struct RendererConfig {
     pub width: u32,
@@ -24,9 +28,7 @@ pub struct RendererConfig {
 pub struct Renderer {
     device: Device,
     queue: Queue,
-    config: RendererConfig,
 
-    assets: AssetServer,
     resources: ResourceManager,
 
     scene: Option<Scene>,
@@ -43,7 +45,7 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn new(device: Device, queue: Queue, config: RendererConfig, assets: AssetServer) -> Self {
+    pub fn new(device: Device, queue: Queue, (width, height): (u32, u32)) -> Self {
         let shader = device.create_shader_module(include_wgsl!("shaders/basic.wgsl"));
         let camera_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("camera bgl"),
@@ -62,8 +64,8 @@ impl Renderer {
         let depth_texture = device.create_texture(&TextureDescriptor {
             label: Some("depth_t"),
             size: Extent3d {
-                width: config.width,
-                height: config.height,
+                width: width,
+                height: height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -79,8 +81,6 @@ impl Renderer {
         Self {
             device,
             queue,
-            config,
-            assets,
             resources,
             shader,
             camera_layout,
@@ -215,72 +215,72 @@ impl Renderer {
             return;
         };
 
-        for node in scene.nodes() {
-            if let Some(mesh) = scene.get_mesh(node) {
-                let mesh_geo = self.assets.geometry.get(mesh.geometry).unwrap();
-                let geo_handle = self.resources.add_geometry(&mesh_geo);
-                let mat_handle = self.resources.add_material(mesh.material, &self.assets);
+        // for node in scene.nodes() {
+        //     if let Some(mesh) = scene.get_mesh(node) {
+        //         let mesh_geo = self.assets.geometry.get(mesh.geometry).unwrap();
+        //         let geo_handle = self.resources.add_geometry(&mesh_geo);
+        //         let mat_handle = self.resources.add_material(mesh.material, &self.assets);
 
-                let geometry = self.resources.geometry.get(geo_handle).unwrap();
-                let material = self.resources.material.get(mat_handle).unwrap();
+        //         let geometry = self.resources.geometry.get(geo_handle).unwrap();
+        //         let material = self.resources.material.get(mat_handle).unwrap();
 
-                let pipeline_layout =
-                    self.device
-                        .create_pipeline_layout(&PipelineLayoutDescriptor {
-                            label: None,
-                            bind_group_layouts: &[
-                                Some(&self.camera_layout),
-                                Some(material.layout()),
-                            ],
-                            immediate_size: 0,
-                        });
+        //         let pipeline_layout =
+        //             self.device
+        //                 .create_pipeline_layout(&PipelineLayoutDescriptor {
+        //                     label: None,
+        //                     bind_group_layouts: &[
+        //                         Some(&self.camera_layout),
+        //                         Some(material.layout()),
+        //                     ],
+        //                     immediate_size: 0,
+        //                 });
 
-                let pipeline = self
-                    .device
-                    .create_render_pipeline(&RenderPipelineDescriptor {
-                        label: Some("renderer pipeline"),
-                        layout: Some(&pipeline_layout),
-                        vertex: VertexState {
-                            module: &self.shader,
-                            entry_point: Some("vs_main"),
-                            compilation_options: Default::default(),
-                            buffers: &geometry.vertex_layout().wgpu_layout(),
-                        },
-                        primitive: PrimitiveState {
-                            topology: wgpu::PrimitiveTopology::TriangleList, // TODO: Get from model
-                            cull_mode: Some(Face::Back),
-                            ..Default::default()
-                        },
-                        depth_stencil: Some(DepthStencilState {
-                            format: TextureFormat::Depth32Float,
-                            depth_compare: Some(wgpu::CompareFunction::Always),
-                            depth_write_enabled: Some(true),
-                            stencil: Default::default(),
-                            bias: Default::default(),
-                        }),
-                        multisample: MultisampleState::default(),
-                        fragment: Some(FragmentState {
-                            module: &self.shader,
-                            entry_point: Some("fs_main"),
-                            compilation_options: PipelineCompilationOptions::default(),
-                            targets: &[Some(ColorTargetState {
-                                format: self.config.color_format,
-                                blend: None,
-                                write_mask: ColorWrites::all(),
-                            })],
-                        }),
-                        multiview_mask: None,
-                        cache: None,
-                    });
+        //         let pipeline = self
+        //             .device
+        //             .create_render_pipeline(&RenderPipelineDescriptor {
+        //                 label: Some("renderer pipeline"),
+        //                 layout: Some(&pipeline_layout),
+        //                 vertex: VertexState {
+        //                     module: &self.shader,
+        //                     entry_point: Some("vs_main"),
+        //                     compilation_options: Default::default(),
+        //                     buffers: &geometry.vertex_layout().wgpu_layout(),
+        //                 },
+        //                 primitive: PrimitiveState {
+        //                     topology: wgpu::PrimitiveTopology::TriangleList, // TODO: Get from model
+        //                     cull_mode: Some(Face::Back),
+        //                     ..Default::default()
+        //                 },
+        //                 depth_stencil: Some(DepthStencilState {
+        //                     format: TextureFormat::Depth32Float,
+        //                     depth_compare: Some(wgpu::CompareFunction::Always),
+        //                     depth_write_enabled: Some(true),
+        //                     stencil: Default::default(),
+        //                     bias: Default::default(),
+        //                 }),
+        //                 multisample: MultisampleState::default(),
+        //                 fragment: Some(FragmentState {
+        //                     module: &self.shader,
+        //                     entry_point: Some("fs_main"),
+        //                     compilation_options: PipelineCompilationOptions::default(),
+        //                     targets: &[Some(ColorTargetState {
+        //                         format: self.config.color_format,
+        //                         blend: None,
+        //                         write_mask: ColorWrites::all(),
+        //                     })],
+        //                 }),
+        //                 multiview_mask: None,
+        //                 cache: None,
+        //             });
 
-                self.resources.pipelines.insert(geo_handle, pipeline);
+        //         self.resources.pipelines.insert(geo_handle, pipeline);
 
-                self.renderables.push(Renderable {
-                    geometry: geo_handle,
-                    material: mat_handle,
-                });
-            }
-        }
+        //         self.renderables.push(Renderable {
+        //             geometry: geo_handle,
+        //             material: mat_handle,
+        //         });
+        //     }
+        // }
 
         let uniform = self.device.create_buffer(&BufferDescriptor {
             label: Some("camera uniform"),

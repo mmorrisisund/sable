@@ -3,11 +3,12 @@ use std::time::{Duration, Instant};
 use glam::{Vec3, vec2, vec3};
 use gpui::{
     Application, Bounds, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, ScrollWheelEvent, Size, WgpuSurfaceHandle, Window, WindowBounds, WindowOptions,
-    actions, div, prelude::*, px, rgb, wgpu_surface,
+    Pixels, Point, ScrollWheelEvent, Size, WgpuSurface, WgpuSurfaceHandle, Window, WindowBounds,
+    WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
 };
-use sable::{Renderer, RendererConfig};
+use sable::{Engine, Renderer, RendererConfig};
 use sable_assets::{AssetServer, scene_ext::SceneExt};
+use sable_renderer::settings::{RendererInitConfig, RendererSettings};
 use sable_resources::Scene;
 use wgpu::{Device, Queue, TextureFormat, TextureView};
 
@@ -36,16 +37,7 @@ fn main() {
                     .create_wgpu_surface(1000, 800, wgpu::TextureFormat::Rgba8UnormSrgb)
                     .expect("wgpu not supported on this machine");
 
-                let now = Instant::now();
-                cx.new(|_| ViewerApp {
-                    surface,
-                    frame_count: 0,
-                    last_fps_update: now,
-                    display_fps: 0.0,
-                    renderer: None,
-
-                    state: AppState::default(),
-                })
+                cx.new(|_| ViewerApp::new(surface))
             },
         );
     })
@@ -69,9 +61,33 @@ struct ViewerApp {
     display_fps: f64,
     state: AppState,
     renderer: Option<RenderState>,
+    engine: Engine,
+    size: (u32, u32),
 }
 
 impl ViewerApp {
+    fn new(surface: WgpuSurfaceHandle) -> Self {
+        // TODO: Setup resize handle here??
+        let engine = Engine::new(
+            surface.device().clone(),
+            surface.queue().clone(),
+            surface.size(),
+        );
+        let size = surface.size();
+
+        Self {
+            surface,
+            frame_count: 0,
+            last_fps_update: Instant::now(),
+            display_fps: 0.0,
+            renderer: None,
+
+            state: AppState::default(),
+            engine,
+            size,
+        }
+    }
+
     fn details_pane(&mut self) -> impl IntoElement {
         div().w(px(232.0)).text_color(rgb(0x00aaff)).child(
             div()
@@ -111,11 +127,23 @@ impl ViewerApp {
                 ),
         )
     }
+
+    fn did_resize(&mut self, size: (u32, u32)) -> bool {
+        let changed = self.size.0 != size.0 || self.size.1 != size.1;
+        if changed {
+            self.size = size;
+        }
+        changed
+    }
 }
 
 impl Render for ViewerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if let Some((view, (w, h))) = self.surface.back_view_with_size() {
+            if self.did_resize((w, h)) {
+                self.engine.resize(w, h);
+            }
+
             let renderer = self.renderer.get_or_insert_with(|| {
                 let device = self.surface.device().clone();
                 let queue = self.surface.queue().clone();
@@ -124,10 +152,6 @@ impl Render for ViewerApp {
             });
 
             // "tick" state here
-
-            if renderer.width != w || renderer.height != h {
-                renderer.resize(w, h);
-            }
 
             renderer.render(&view);
             drop(view);
@@ -227,7 +251,7 @@ impl ViewerApp {
 struct RenderState {
     device: Device,
     queue: Queue,
-    renderer: Renderer,
+    // renderer: Renderer,
     camera: OrbitCamera,
     width: u32,
     height: u32,
@@ -248,11 +272,12 @@ impl RenderState {
         let prefab_handle = server.load_model(&path).unwrap();
         let prefab = server.prefab.get(prefab_handle).unwrap();
 
-        let mut renderer = Renderer::new(device.clone(), queue.clone(), config, server);
+        // let mut renderer =
+        //     Renderer::new(RendererInitConfig::default(), RendererSettings::default());
 
         let mut scene = Scene::new();
         scene.instantiate_prefab(&prefab);
-        renderer.set_scene(scene);
+        // renderer.set_scene(scene);
 
         // renderer.add_prefab(prefab_handle);
 
@@ -268,7 +293,7 @@ impl RenderState {
         Self {
             device,
             queue,
-            renderer,
+            // renderer,
             camera,
             width: w,
             height: h,
@@ -276,14 +301,14 @@ impl RenderState {
     }
 
     fn render(&mut self, view: &TextureView) {
-        self.renderer.start_frame();
-        self.renderer.render(&self.camera, view);
+        // self.renderer.start_frame();
+        // self.renderer.render(&self.camera, view);
     }
 
     fn resize(&mut self, w: u32, h: u32) {
         self.width = w;
         self.height = h;
-        self.renderer.resize(w, h);
+        // self.renderer.resize(w, h);
     }
 }
 
