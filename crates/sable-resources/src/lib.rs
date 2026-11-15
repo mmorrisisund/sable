@@ -1,10 +1,15 @@
 mod cpu;
+mod scene;
 
 pub use cpu::{
     geometry::{self, Attribute, AttributeKind, Geometry, IndexAttribute},
     image::{self, Image},
     material::{self, Material},
     mesh::{self, Mesh},
-    scene::Scene,
     texture,
+};
+pub use scene::{
+    Scene,
+    camera::{Camera, CameraUniform, RenderCamera},
+    manager::SceneManager,
 };

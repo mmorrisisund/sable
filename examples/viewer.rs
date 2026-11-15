@@ -1,20 +1,18 @@
 use std::time::{Duration, Instant};
 
-use glam::{Vec3, vec2, vec3};
 use gpui::{
     Application, Bounds, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
-    Pixels, Point, ScrollWheelEvent, Size, WgpuSurface, WgpuSurfaceHandle, Window, WindowBounds,
-    WindowOptions, actions, div, prelude::*, px, rgb, wgpu_surface,
+    Pixels, Point, ScrollWheelEvent, Size, WgpuSurfaceHandle, Window, WindowBounds, WindowOptions,
+    actions, div, prelude::*, px, rgb, wgpu_surface,
 };
-use sable::{Engine, Renderer, RendererConfig};
-use sable_assets::{AssetServer, scene_ext::SceneExt};
-use sable_renderer::settings::{RendererInitConfig, RendererSettings};
-use sable_resources::Scene;
-use wgpu::{Device, Queue, TextureFormat, TextureView};
-
-use crate::camera::OrbitCamera;
+use sable::Engine;
+use sable_assets::scene_ext::SceneExt;
+use sable_core::math::Deg;
+use sable_resources::{Camera, Scene};
 
 const ASSET_ROOT: &str = r#"C:\Users\mike\code\assets\glTF\"#;
+const DEFAULT_WIDTH: f32 = 1000.0;
+const DEFAULT_HEIGHT: f32 = 800.0;
 
 fn main() {
     env_logger::init();
@@ -28,13 +26,17 @@ fn main() {
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(Bounds::new(
                     Point::new(px(10.0), px(10.0)),
-                    Size::new(px(1000.0), px(800.0)),
+                    Size::new(px(DEFAULT_WIDTH), px(DEFAULT_HEIGHT)),
                 ))),
                 ..Default::default()
             },
             |window, cx| {
                 let surface = window
-                    .create_wgpu_surface(1000, 800, wgpu::TextureFormat::Rgba8UnormSrgb)
+                    .create_wgpu_surface(
+                        DEFAULT_WIDTH as u32,
+                        DEFAULT_HEIGHT as u32,
+                        wgpu::TextureFormat::Rgba8UnormSrgb,
+                    )
                     .expect("wgpu not supported on this machine");
 
                 cx.new(|_| ViewerApp::new(surface))
@@ -60,27 +62,36 @@ struct ViewerApp {
     last_fps_update: Instant,
     display_fps: f64,
     state: AppState,
-    renderer: Option<RenderState>,
     engine: Engine,
     size: (u32, u32),
 }
 
 impl ViewerApp {
     fn new(surface: WgpuSurfaceHandle) -> Self {
-        // TODO: Setup resize handle here??
-        let engine = Engine::new(
-            surface.device().clone(),
-            surface.queue().clone(),
-            surface.size(),
-        );
+        let model = std::env::args().nth(1).unwrap();
+        let model_path = format!("{ASSET_ROOT}/{model}/glTF/{model}.gltf");
+
         let size = surface.size();
+        let mut engine = Engine::new(surface.device().clone(), surface.queue().clone(), size);
+
+        let prefab_handle = engine.assets.load_model(&model_path).unwrap();
+        let prefab = engine.assets.prefab.get(prefab_handle).unwrap();
+
+        let mut scene = Scene::new();
+
+        let camera =
+            Camera::new_perspective(Deg::new(45.0), DEFAULT_WIDTH / DEFAULT_HEIGHT, 0.1, 1000.0);
+
+        scene.add_active_camera(camera);
+        scene.instantiate_prefab(&prefab);
+
+        engine.scenes.add_active_scene(scene);
 
         Self {
             surface,
             frame_count: 0,
             last_fps_update: Instant::now(),
             display_fps: 0.0,
-            renderer: None,
 
             state: AppState::default(),
             engine,
@@ -144,16 +155,8 @@ impl Render for ViewerApp {
                 self.engine.resize(w, h);
             }
 
-            let renderer = self.renderer.get_or_insert_with(|| {
-                let device = self.surface.device().clone();
-                let queue = self.surface.queue().clone();
-
-                RenderState::new(device, queue, w, h, self.surface.format())
-            });
-
             // "tick" state here
-
-            renderer.render(&view);
+            self.engine.render_frame(&view);
             drop(view);
 
             self.surface.swap_buffers();
@@ -199,18 +202,22 @@ impl ViewerApp {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {
-        this.state.mouse_down = false;
-        this.state.button = None;
+        this.engine.input.handle_mouse_press(
+            sable_app::MouseButton::Left,
+            sable_app::ButtonState::Released,
+        );
     }
 
     fn handle_any_mouse_down(
         this: &mut Self,
-        e: &MouseDownEvent,
+        _e: &MouseDownEvent,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {
-        this.state.mouse_down = true;
-        this.state.button = Some(e.button);
+        this.engine.input.handle_mouse_press(
+            sable_app::MouseButton::Left,
+            sable_app::ButtonState::Pressed,
+        );
     }
 
     fn handle_mouse_move(
@@ -219,178 +226,109 @@ impl ViewerApp {
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {
-        let Some(state) = self.renderer.as_mut() else {
-            return;
-        };
+        self.engine
+            .input
+            .handle_mouse_move(e.position.x.to_f32(), e.position.y.to_f32());
 
-        let delta = e.position - self.state.position;
+        // let delta = e.position - self.state.position;
         self.state.position = e.position;
 
         if self.state.mouse_down {
-            state.camera.rotate(vec2(delta.x.into(), delta.y.into()));
+            // self.camera.rotate(vec2(delta.x.into(), delta.y.into()));
         }
     }
 
     fn handle_scroll(
         &mut self,
-        e: &ScrollWheelEvent,
+        _e: &ScrollWheelEvent,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {
-        let Some(state) = self.renderer.as_mut() else {
-            return;
-        };
+        // let delta = e.delta.pixel_delta(Pixels::from(100.0f32));
 
-        let delta = e.delta.pixel_delta(Pixels::from(100.0f32));
-
-        state.camera.zoom(delta.y.value());
+        // self.camera.zoom(delta.y.value());
     }
 }
 
-#[allow(dead_code)]
-struct RenderState {
-    device: Device,
-    queue: Queue,
-    // renderer: Renderer,
-    camera: OrbitCamera,
-    width: u32,
-    height: u32,
-}
+// mod camera {
+//     use glam::{
+//         Mat4, Vec2, Vec3,
+//         camera::rh::{proj, view},
+//     };
+//     use sable::renderer::{CameraUniform, RenderCamera};
 
-impl RenderState {
-    fn new(device: Device, queue: Queue, w: u32, h: u32, color_format: TextureFormat) -> Self {
-        let config = RendererConfig {
-            width: w,
-            height: h,
-            color_format,
-        };
+//     pub struct OrbitCamera {
+//         position: Vec3,
+//         target: Vec3,
+//         projection: Mat4,
+//         view: Mat4,
 
-        let model = std::env::args().nth(1).unwrap();
-        let path = format!("{ASSET_ROOT}/{model}/glTF/{model}.gltf");
+//         radius: f32,
+//         yaw: f32,
+//         pitch: f32,
+//         sensitivity: f32,
+//     }
 
-        let mut server = AssetServer::new();
-        let prefab_handle = server.load_model(&path).unwrap();
-        let prefab = server.prefab.get(prefab_handle).unwrap();
+//     impl OrbitCamera {
+//         pub fn new(
+//             position: Vec3,
+//             target: Vec3,
+//             fov_y_radians: f32,
+//             aspect: f32,
+//             near: f32,
+//             far: f32,
+//         ) -> Self {
+//             Self {
+//                 position,
+//                 target,
+//                 projection: proj::directx::perspective(fov_y_radians, aspect, near, far),
+//                 view: view::look_at_mat4(position, target, Vec3::Y),
 
-        // let mut renderer =
-        //     Renderer::new(RendererInitConfig::default(), RendererSettings::default());
+//                 radius: target.distance(position),
+//                 yaw: 0.0,
+//                 pitch: 0.0,
+//                 sensitivity: 0.005,
+//             }
+//         }
 
-        let mut scene = Scene::new();
-        scene.instantiate_prefab(&prefab);
-        // renderer.set_scene(scene);
+//         pub fn zoom(&mut self, delta: f32) {
+//             self.radius = (self.radius + delta * self.sensitivity).max(0.0);
+//             let dir = Vec3::new(
+//                 self.yaw.sin() * self.pitch.cos(),
+//                 self.pitch.sin(),
+//                 self.yaw.cos() * self.pitch.cos(),
+//             )
+//             .normalize();
 
-        // renderer.add_prefab(prefab_handle);
+//             self.position = self.target - dir * -self.radius;
+//             self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);
+//         }
 
-        let camera = OrbitCamera::new(
-            vec3(0.0, 0.0, 5.0),
-            Vec3::ZERO,
-            45.0f32.to_radians(),
-            w as f32 / h as f32,
-            0.01,
-            100.0,
-        );
+//         pub fn rotate(&mut self, delta: Vec2) {
+//             self.yaw += delta.x * self.sensitivity;
+//             self.pitch = (self.pitch + delta.y * self.sensitivity).clamp(-1.5, 1.5);
 
-        Self {
-            device,
-            queue,
-            // renderer,
-            camera,
-            width: w,
-            height: h,
-        }
-    }
+//             let dir = Vec3::new(
+//                 self.yaw.cos() * self.pitch.cos(),
+//                 self.pitch.sin(),
+//                 self.yaw.sin() * self.pitch.cos(),
+//             )
+//             .normalize();
 
-    fn render(&mut self, view: &TextureView) {
-        // self.renderer.start_frame();
-        // self.renderer.render(&self.camera, view);
-    }
+//             self.position = self.target - dir * -self.radius;
+//             self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);
+//         }
+//     }
 
-    fn resize(&mut self, w: u32, h: u32) {
-        self.width = w;
-        self.height = h;
-        // self.renderer.resize(w, h);
-    }
-}
-
-mod camera {
-    use glam::{
-        Mat4, Vec2, Vec3,
-        camera::rh::{proj, view},
-    };
-    use sable::renderer::{CameraUniform, RenderCamera};
-
-    pub struct OrbitCamera {
-        position: Vec3,
-        target: Vec3,
-        projection: Mat4,
-        view: Mat4,
-
-        radius: f32,
-        yaw: f32,
-        pitch: f32,
-        sensitivity: f32,
-    }
-
-    impl OrbitCamera {
-        pub fn new(
-            position: Vec3,
-            target: Vec3,
-            fov_y_radians: f32,
-            aspect: f32,
-            near: f32,
-            far: f32,
-        ) -> Self {
-            Self {
-                position,
-                target,
-                projection: proj::directx::perspective(fov_y_radians, aspect, near, far),
-                view: view::look_at_mat4(position, target, Vec3::Y),
-
-                radius: target.distance(position),
-                yaw: 0.0,
-                pitch: 0.0,
-                sensitivity: 0.005,
-            }
-        }
-
-        pub fn zoom(&mut self, delta: f32) {
-            self.radius = (self.radius + delta * self.sensitivity).max(0.0);
-            let dir = Vec3::new(
-                self.yaw.sin() * self.pitch.cos(),
-                self.pitch.sin(),
-                self.yaw.cos() * self.pitch.cos(),
-            )
-            .normalize();
-
-            self.position = self.target - dir * -self.radius;
-            self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);
-        }
-
-        pub fn rotate(&mut self, delta: Vec2) {
-            self.yaw += delta.x * self.sensitivity;
-            self.pitch = (self.pitch + delta.y * self.sensitivity).clamp(-1.5, 1.5);
-
-            let dir = Vec3::new(
-                self.yaw.cos() * self.pitch.cos(),
-                self.pitch.sin(),
-                self.yaw.sin() * self.pitch.cos(),
-            )
-            .normalize();
-
-            self.position = self.target - dir * -self.radius;
-            self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);
-        }
-    }
-
-    impl RenderCamera for OrbitCamera {
-        fn extract_uniform(&self) -> CameraUniform {
-            CameraUniform {
-                view: self.view,
-                projection: self.projection,
-                view_projection: self.projection * self.view,
-                position: self.position,
-                ..Default::default()
-            }
-        }
-    }
-}
+//     impl RenderCamera for OrbitCamera {
+//         fn extract_uniform(&self) -> CameraUniform {
+//             CameraUniform {
+//                 view: self.view,
+//                 projection: self.projection,
+//                 view_projection: self.projection * self.view,
+//                 position: self.position,
+//                 ..Default::default()
+//             }
+//         }
+//     }
+// }

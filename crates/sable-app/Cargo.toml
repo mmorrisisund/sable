@@ -6,7 +6,9 @@ edition.workspace = true
 [dependencies]
 sable_assets.workspace = true
 sable_renderer.workspace = true
+sable_resources.workspace = true
 
 glam.workspace = true
+gpui-ce.workspace = true
 log.workspace = true
 wgpu.workspace = true

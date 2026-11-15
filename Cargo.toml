@@ -30,6 +30,8 @@ thiserror = "2.0.21"
 
 # graphics
 wgpu = "30.0.1"
+gpui-ce = { git = "https://github.com/Far-Beyond-Pulsar/wgpui" }
+
 
 # =============================================================================
 # Umbrella Crate — `Sable`

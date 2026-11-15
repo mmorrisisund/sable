@@ -6,5 +6,6 @@ new_key_type! {
     pub struct MaterialHandle;
     pub struct ImageHandle;
     pub struct TextureHandle;
+    pub struct SceneHandle;
     pub struct NodeHandle;
 }

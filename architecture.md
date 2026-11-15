@@ -5,5 +5,8 @@ Engine to Orchestrate Flow
  - gpui will the composite with root view
 
 
-Input
- - 
+Camera Stuff
+- Scene has generic camera with settings and matrices
+- Simplified render camera can be extracted from this
+- Camera is just a node (which has a transform)
+- Different camera controllers take Input and transform, then modify transform

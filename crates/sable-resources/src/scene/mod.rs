@@ -1,19 +1,28 @@
+pub mod camera;
+pub mod manager;
+pub mod node;
+
 use std::borrow::Cow;
 
 use glam::Mat4;
-use sable_core::{handle::NodeHandle, transform::Transform};
+use sable_core::handle::NodeHandle;
 use slotmap::{SecondaryMap, SlotMap, SparseSecondaryMap};
 
-use crate::Mesh;
+use crate::{
+    Mesh,
+    scene::{camera::Camera, node::Node},
+};
 
 #[derive(Debug, Default)]
 pub struct Scene {
     nodes: SlotMap<NodeHandle, Node>,
     roots: Vec<NodeHandle>,
+    active_camera: Option<NodeHandle>,
 
     names: SecondaryMap<NodeHandle, Cow<'static, str>>,
 
     meshes: SparseSecondaryMap<NodeHandle, Mesh>,
+    cameras: SparseSecondaryMap<NodeHandle, Camera>,
 }
 
 impl Scene {
@@ -102,19 +111,29 @@ impl Scene {
     pub fn set_mesh(&mut self, handle: NodeHandle, mesh: Mesh) {
         self.meshes.insert(handle, mesh);
     }
-}
 
-#[derive(Debug, Default, Clone)]
-pub struct Node {
-    parent: Option<NodeHandle>,
-    children: Vec<NodeHandle>,
+    pub fn get_camera(&self, handle: NodeHandle) -> Option<&Camera> {
+        self.cameras.get(handle)
+    }
 
-    pub transform: Transform,
-}
+    pub fn get_active_camera(&self) -> Option<&Camera> {
+        self.get_camera(self.active_camera?)
+    }
 
-impl Node {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn add_camera(&mut self, camera: Camera) -> NodeHandle {
+        let handle = self.create_node();
+        self.cameras.insert(handle, camera);
+        handle
+    }
+
+    pub fn set_active_camera(&mut self, handle: NodeHandle) {
+        self.active_camera = Some(handle);
+    }
+
+    pub fn add_active_camera(&mut self, camera: Camera) -> NodeHandle {
+        let handle = self.add_camera(camera);
+        self.set_active_camera(handle);
+        handle
     }
 }
 

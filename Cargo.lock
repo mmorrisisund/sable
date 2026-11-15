@@ -4905,9 +4905,11 @@ name = "sable_app"
 version = "0.1.0"
 dependencies = [
  "glam",
+ "gpui-ce",
  "log",
  "sable_assets",
  "sable_renderer",
+ "sable_resources",
  "wgpu",
 ]
 

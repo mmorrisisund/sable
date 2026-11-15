@@ -1,6 +1,7 @@
 use sable_assets::AssetServer;
 use sable_renderer::Renderer;
-use wgpu::{Device, Queue};
+use sable_resources::SceneManager;
+use wgpu::{Device, Queue, TextureView};
 
 use crate::input::InputState;
 
@@ -8,6 +9,7 @@ use crate::input::InputState;
 pub struct Engine {
     pub input: InputState,
     pub assets: AssetServer,
+    pub scenes: SceneManager,
     pub renderer: Renderer,
 }
 
@@ -16,8 +18,20 @@ impl Engine {
         Self {
             input: InputState::new(),
             assets: AssetServer::new(),
+            scenes: SceneManager::new(),
             renderer: Renderer::new(device, queue, size),
         }
+    }
+
+    pub fn render_frame(&mut self, view: &TextureView) {
+        let Some(scene) = self.scenes.get_active_scene() else {
+            return;
+        };
+        let Some(active_cam) = scene.get_active_camera() else {
+            return;
+        };
+
+        self.renderer.render(active_cam, view);
     }
 
     pub fn resize(&self, width: u32, height: u32) {
