@@ -72,7 +72,7 @@ impl ViewerApp {
         let model_path = format!("{ASSET_ROOT}/{model}/glTF/{model}.gltf");
 
         let size = surface.size();
-        let mut engine = Engine::new(surface.device().clone(), surface.queue().clone(), size);
+        let mut engine = Engine::new(surface.clone());
 
         let prefab_handle = engine.assets.load_model(&model_path).unwrap();
         let prefab = engine.assets.prefab.get(prefab_handle).unwrap();

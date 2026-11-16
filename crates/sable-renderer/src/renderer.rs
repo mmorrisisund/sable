@@ -1,21 +1,19 @@
 use bytemuck::cast_slice;
+use gpui::WgpuSurfaceHandle;
 use sable_assets::AssetServer;
-use sable_core::handle::{GeometryHandle, MaterialHandle};
 use sable_resources::{CameraUniform, RenderCamera, Scene};
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
-    Color, ColorTargetState, ColorWrites, DepthStencilState, Device, Extent3d, Face, FragmentState,
-    LoadOp, MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
-    PrimitiveState, Queue, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, RenderPipelineDescriptor, ShaderModule, ShaderStages, StoreOp, Texture,
-    TextureDescriptor, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
-    VertexState, include_wgsl,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferUsages, Color,
+    Extent3d, LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, StoreOp, Texture, TextureDescriptor, TextureFormat, TextureUsages,
+    TextureView, TextureViewDescriptor,
 };
 
 use crate::{
     ResourceManager,
-    // settings::{RendererInitConfig, RendererSettings},
+    core::scene::RenderableItem,
+    frame::{Frame, FrameManager},
+    gpu::context::WgpuContext,
 };
 
 pub struct RendererConfig {
@@ -25,46 +23,30 @@ pub struct RendererConfig {
 }
 
 pub struct Renderer {
-    device: Device,
-    queue: Queue,
-
+    gpu_ctx: WgpuContext,
     resources: ResourceManager,
+    frame_manager: FrameManager,
 
-    scene: Option<Scene>,
-
-    shader: ShaderModule,
-    camera_layout: BindGroupLayout,
     camera_bg: Option<BindGroup>,
     camera_uniform: Option<Buffer>,
 
-    renderables: Vec<Renderable>,
+    renderables: Vec<RenderableItem>,
 
     depth_texture: Texture,
     depth_view: TextureView,
 }
 
 impl Renderer {
-    pub fn new(device: Device, queue: Queue, (width, height): (u32, u32)) -> Self {
-        let shader = device.create_shader_module(include_wgsl!("shaders/basic.wgsl"));
-        let camera_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("camera bgl"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX_FRAGMENT,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
+    pub fn new(surface: WgpuSurfaceHandle) -> Self {
+        let device = surface.device();
+        let queue = surface.queue();
+        let (w, h) = surface.size();
 
         let depth_texture = device.create_texture(&TextureDescriptor {
             label: Some("depth_t"),
             size: Extent3d {
-                width,
-                height,
+                width: w,
+                height: h,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -77,36 +59,43 @@ impl Renderer {
         let depth_view = depth_texture.create_view(&TextureViewDescriptor::default());
         let resources = ResourceManager::new(device.clone(), queue.clone());
 
+        let gpu_ctx = WgpuContext::from_surface_handle(&surface);
+        let frame_manager = FrameManager::new();
+
         Self {
-            device,
-            queue,
+            gpu_ctx,
             resources,
-            shader,
-            camera_layout,
+            frame_manager,
             camera_bg: None,
             camera_uniform: None,
-            scene: None,
             renderables: Vec::new(),
             depth_texture,
             depth_view,
         }
     }
 
-    pub fn set_scene(&mut self, scene: Scene, assets: &AssetServer) {
-        self.scene = Some(scene);
-        self.extract_scene(assets);
+    pub fn begin_frame(&mut self, scene: &Scene, assets: &AssetServer) -> Option<Frame<'_>> {
+        // extract renderables from scene
+        self.renderables = self
+            .frame_manager
+            .extract_scene(scene, assets, &mut self.resources);
+
+        // create commands
+        // need renderable scene, frame state, gpu ctx, resources, pipelines, shaders
+
+        // prepare pass (maybe)
+
+        // return frame
+
+        None
     }
 
-    pub fn start_frame(&mut self) {
-        let Some(scene) = &mut self.scene else {
-            return;
-        };
-
-        scene.update();
+    pub fn end_frame(&mut self) {
+        // future use
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        let depth_texture = self.device.create_texture(&TextureDescriptor {
+        let depth_texture = self.gpu_ctx.device.create_texture(&TextureDescriptor {
             label: Some("depth_t"),
             size: Extent3d {
                 width,
@@ -130,14 +119,17 @@ impl Renderer {
         let Some(cam_uni) = self.camera_uniform.as_ref() else {
             return;
         };
-        self.queue
+        self.gpu_ctx
+            .queue
             .write_buffer(cam_uni, 0, cast_slice(&[camera.extract_uniform()]));
 
         let Some(cam_bg) = self.camera_bg.as_ref() else {
             return;
         };
-
-        let mut encoder = self.device.create_command_encoder(&Default::default());
+        let mut encoder = self
+            .gpu_ctx
+            .device
+            .create_command_encoder(&Default::default());
 
         {
             let mut rp = encoder.begin_render_pass(&RenderPassDescriptor {
@@ -204,93 +196,22 @@ impl Renderer {
             }
         }
 
-        self.queue.submit(Some(encoder.finish()));
+        self.gpu_ctx.queue.submit(Some(encoder.finish()));
     }
 }
 
 impl Renderer {
-    fn extract_scene(&mut self, assets: &AssetServer) {
-        let Some(scene) = self.scene.as_ref() else {
-            return;
-        };
-
-        for node in scene.nodes() {
-            if let Some(mesh) = scene.get_mesh(node) {
-                let mesh_geo = assets.geometry.get(mesh.geometry).unwrap();
-                let geo_handle = self.resources.add_geometry(&mesh_geo);
-                let mat_handle = self.resources.add_material(mesh.material, assets);
-
-                let geometry = self.resources.geometry.get(geo_handle).unwrap();
-                let material = self.resources.material.get(mat_handle).unwrap();
-
-                let pipeline_layout =
-                    self.device
-                        .create_pipeline_layout(&PipelineLayoutDescriptor {
-                            label: None,
-                            bind_group_layouts: &[
-                                Some(&self.camera_layout),
-                                Some(material.layout()),
-                            ],
-                            immediate_size: 0,
-                        });
-
-                let pipeline = self
-                    .device
-                    .create_render_pipeline(&RenderPipelineDescriptor {
-                        label: Some("renderer pipeline"),
-                        layout: Some(&pipeline_layout),
-                        vertex: VertexState {
-                            module: &self.shader,
-                            entry_point: Some("vs_main"),
-                            compilation_options: Default::default(),
-                            buffers: &geometry.vertex_layout().wgpu_layout(),
-                        },
-                        primitive: PrimitiveState {
-                            topology: wgpu::PrimitiveTopology::TriangleList, // TODO: Get from model
-                            cull_mode: Some(Face::Back),
-                            ..Default::default()
-                        },
-                        depth_stencil: Some(DepthStencilState {
-                            format: TextureFormat::Depth32Float,
-                            depth_compare: Some(wgpu::CompareFunction::Always),
-                            depth_write_enabled: Some(true),
-                            stencil: Default::default(),
-                            bias: Default::default(),
-                        }),
-                        multisample: MultisampleState::default(),
-                        fragment: Some(FragmentState {
-                            module: &self.shader,
-                            entry_point: Some("fs_main"),
-                            compilation_options: PipelineCompilationOptions::default(),
-                            targets: &[Some(ColorTargetState {
-                                format: TextureFormat::Rgba8UnormSrgb, // self.config.color_format,
-                                blend: None,
-                                write_mask: ColorWrites::all(),
-                            })],
-                        }),
-                        multiview_mask: None,
-                        cache: None,
-                    });
-
-                self.resources.pipelines.insert(geo_handle, pipeline);
-
-                self.renderables.push(Renderable {
-                    geometry: geo_handle,
-                    material: mat_handle,
-                });
-            }
-        }
-
-        let uniform = self.device.create_buffer(&BufferDescriptor {
+    pub fn prepare_camera(&mut self) {
+        let uniform = self.gpu_ctx.device.create_buffer(&BufferDescriptor {
             label: Some("camera uniform"),
             size: size_of::<CameraUniform>() as u64,
             usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
             mapped_at_creation: false,
         });
 
-        self.camera_bg = Some(self.device.create_bind_group(&BindGroupDescriptor {
+        self.camera_bg = Some(self.gpu_ctx.device.create_bind_group(&BindGroupDescriptor {
             label: Some("camera bg"),
-            layout: &self.camera_layout,
+            layout: &self.resources.camera_layout,
             entries: &[BindGroupEntry {
                 binding: 0,
                 resource: uniform.as_entire_binding(),
@@ -299,9 +220,4 @@ impl Renderer {
 
         self.camera_uniform = Some(uniform);
     }
-}
-
-struct Renderable {
-    geometry: GeometryHandle,
-    material: MaterialHandle,
 }

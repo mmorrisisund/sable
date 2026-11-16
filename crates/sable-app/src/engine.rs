@@ -1,7 +1,8 @@
+use gpui::WgpuSurfaceHandle;
 use sable_assets::AssetServer;
 use sable_renderer::Renderer;
 use sable_resources::SceneManager;
-use wgpu::{Device, Queue, TextureView};
+use wgpu::TextureView;
 
 use crate::input::InputState;
 
@@ -14,27 +15,29 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub fn new(device: Device, queue: Queue, size: (u32, u32)) -> Self {
+    pub fn new(surface: WgpuSurfaceHandle) -> Self {
         Self {
             input: InputState::new(),
             assets: AssetServer::new(),
             scenes: SceneManager::new(),
-            renderer: Renderer::new(device, queue, size),
+            renderer: Renderer::new(surface),
         }
     }
 
-    pub fn render_frame(&mut self, view: &TextureView) {
-        let Some(scene) = self.scenes.get_active_scene() else {
-            return;
-        };
-        let Some(active_cam) = scene.get_active_camera() else {
-            return;
-        };
+    pub fn render_frame(&mut self, view: &TextureView) -> Option<()> {
+        let scene = self.scenes.get_active_scene()?;
+        let camera = scene.get_active_camera()?;
 
-        self.renderer.render(active_cam, view);
+        self.renderer.begin_frame(scene, &self.assets);
+        // frame.render(view);
+        self.renderer.prepare_camera();
+        self.renderer.render(camera, view);
+        self.renderer.end_frame();
+
+        Some(())
     }
 
-    pub fn resize(&self, width: u32, height: u32) {
-        log::debug!("resize: {width}, {height}");
+    pub fn resize(&mut self, width: u32, height: u32) {
+        self.renderer.resize(width, height);
     }
 }

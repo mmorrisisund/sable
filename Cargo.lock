@@ -4946,6 +4946,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "glam",
+ "gpui-ce",
  "log",
  "sable_assets",
  "sable_core",

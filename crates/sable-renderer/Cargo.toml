@@ -10,6 +10,7 @@ sable_resources.workspace = true
 
 bytemuck.workspace = true
 glam.workspace = true
+gpui-ce.workspace = true
 log.workspace = true
 slotmap.workspace = true
 wgpu.workspace = true
