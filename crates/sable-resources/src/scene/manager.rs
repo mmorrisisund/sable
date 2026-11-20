@@ -35,6 +35,4 @@ impl SceneManager {
     pub fn get_active_scene_mut(&mut self) -> Option<&mut Scene> {
         self.active_scene.and_then(|h| self.scenes.get_mut(h))
     }
-
-    pub fn query_camera_bundle_mut(&mut self) {}
 }

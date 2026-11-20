@@ -15,6 +15,8 @@ pub struct InputState {
     cursor_position: Vec2,
     cursor_delta: Vec2,
     scroll_delta: Vec2,
+
+    screen_size: Vec2,
 }
 
 impl InputState {
@@ -74,6 +76,26 @@ impl InputState {
 
     pub fn handle_scroll(&mut self, delta_x: f32, delta_y: f32) {
         self.scroll_delta = Vec2::new(delta_x, delta_y);
+    }
+
+    pub fn handle_resize(&mut self, width: u32, height: u32) {
+        self.screen_size = Vec2::new(width as f32, height as f32);
+    }
+
+    pub fn is_mouse_down(&self, button: MouseButton) -> bool {
+        self.pressed_mouse.contains(&button)
+    }
+
+    pub fn mouse_delta(&self) -> Vec2 {
+        self.cursor_delta
+    }
+
+    pub fn scroll_delta(&self) -> Vec2 {
+        self.scroll_delta
+    }
+
+    pub fn screen_size(&self) -> Vec2 {
+        self.screen_size
     }
 }
 

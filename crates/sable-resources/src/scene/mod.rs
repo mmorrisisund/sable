@@ -4,8 +4,8 @@ pub mod node;
 
 use std::borrow::Cow;
 
-use glam::Mat4;
-use sable_core::handle::NodeHandle;
+use glam::Affine3A;
+use sable_core::{handle::NodeHandle, transform::Transform};
 use slotmap::{SecondaryMap, SlotMap, SparseSecondaryMap};
 
 use crate::{
@@ -31,7 +31,7 @@ impl Scene {
     }
 
     pub fn update(&mut self) {
-        update_heirarchy(&mut self.nodes, &self.roots);
+        update_heirarchy(&mut self.nodes, &self.roots, &mut self.cameras);
     }
 }
 
@@ -43,6 +43,12 @@ impl Scene {
 
     pub fn create_node(&mut self) -> NodeHandle {
         self.nodes.insert(Node::new())
+    }
+
+    pub fn create_node_with_name(&mut self, name: &'static str) -> NodeHandle {
+        let handle = self.create_node();
+        self.set_name(handle, name);
+        handle
     }
 
     pub fn get_node(&self, handle: NodeHandle) -> Option<&Node> {
@@ -121,7 +127,7 @@ impl Scene {
     }
 
     pub fn add_camera(&mut self, camera: Camera) -> NodeHandle {
-        let handle = self.create_node();
+        let handle = self.create_node_with_name("camera");
         self.cameras.insert(handle, camera);
         handle
     }
@@ -133,18 +139,31 @@ impl Scene {
     pub fn add_active_camera(&mut self, camera: Camera) -> NodeHandle {
         let handle = self.add_camera(camera);
         self.set_active_camera(handle);
+        self.roots.push(handle);
         handle
+    }
+
+    pub fn query_main_camera_bundle(&mut self) -> Option<(&mut Transform, &Camera)> {
+        let cam_handle = self.active_camera.as_ref()?;
+        let cam_node = self.nodes.get_mut(*cam_handle)?;
+        let camera = self.cameras.get(*cam_handle)?;
+
+        Some((&mut cam_node.transform, camera))
     }
 }
 
-fn update_heirarchy(nodes: &mut SlotMap<NodeHandle, Node>, roots: &[NodeHandle]) {
+fn update_heirarchy(
+    nodes: &mut SlotMap<NodeHandle, Node>,
+    roots: &[NodeHandle],
+    cameras: &mut SparseSecondaryMap<NodeHandle, Camera>,
+) {
     // create stack - (node_h, current_world, changed_b)
     let mut stack = Vec::new();
     // let stack = Vec::<(NodeHandle, Transform, bool)>::new();
 
     // add roots to stack
     for &root in roots {
-        stack.push((root, Mat4::IDENTITY, false));
+        stack.push((root, Affine3A::IDENTITY, false));
     }
 
     // while stack not empty
@@ -155,17 +174,22 @@ fn update_heirarchy(nodes: &mut SlotMap<NodeHandle, Node>, roots: &[NodeHandle])
             let Some(node) = nodes.get_mut(handle) else {
                 continue;
             };
+            node.transform.prev_world_matrix = node.transform.world_matrix;
 
-            let local_changed = node.transform.update();
-            let world_changed = local_changed || parent_changed;
+            let local_changed = node.transform.update_local_matrix();
+            let update_world = local_changed || parent_changed;
 
             // if changes then update world matrix
-            if world_changed {
-                node.transform
-                    .set_world_matrix(parent_world * node.transform.local_matrix());
+            if update_world {
+                let new_world = parent_world * node.transform.local_matrix;
+                node.transform.world_matrix = new_world;
+
+                if let Some(camera) = cameras.get_mut(handle) {
+                    camera.update_view_projection(&new_world);
+                }
             }
 
-            (node.transform.world_matrix(), world_changed)
+            (node.transform.world_matrix, update_world)
         };
 
         // add childrent to stack

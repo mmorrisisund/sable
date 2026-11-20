@@ -7,5 +7,6 @@ edition.workspace = true
 glam.workspace = true
 gltf.workspace = true
 image.workspace = true
+log.workspace = true
 slotmap.workspace = true
 thiserror.workspace = true

@@ -1,5 +1,5 @@
 use bytemuck::{Pod, Zeroable};
-use glam::{Affine3A, Mat4, Vec3};
+use glam::{Affine3A, Mat4, Vec3, camera::rh::proj};
 use sable_core::math::Rad;
 
 #[derive(Debug, Default)]
@@ -26,7 +26,7 @@ pub enum ProjectionType {
 
 impl Camera {
     pub fn new_perspective(fov: impl Into<Rad>, aspect: f32, near: f32, far: f32) -> Self {
-        Self {
+        let mut cam = Self {
             fov: fov.into(),
             projection: ProjectionType::Perspective,
             aspect,
@@ -38,7 +38,11 @@ impl Camera {
 
             projection_matrix: Mat4::IDENTITY,
             view_projection_matrix: Mat4::IDENTITY,
-        }
+        };
+
+        cam.update_projection();
+
+        cam
     }
 
     pub fn new_orthographic() -> Self {
@@ -47,6 +51,28 @@ impl Camera {
             projection: ProjectionType::Orthographic,
             ..Default::default()
         }
+    }
+
+    pub fn update_projection(&mut self) {
+        self.projection_matrix = match self.projection {
+            ProjectionType::Perspective => {
+                proj::directx::perspective(self.fov.as_f32(), self.aspect, self.near, self.far)
+            }
+            ProjectionType::Orthographic => todo!(),
+        };
+
+        self.view_projection_matrix = self.projection_matrix * self.view_matrix;
+    }
+
+    pub fn update_view_projection(&mut self, world_matrix: &Affine3A) {
+        let world_matrix = *world_matrix;
+        self.view_matrix = Mat4::from(world_matrix).inverse();
+        self.view_projection_matrix = self.projection_matrix * self.view_matrix;
+        self.world_matrix = world_matrix;
+    }
+
+    pub fn fov(&self) -> Rad {
+        self.fov
     }
 }
 

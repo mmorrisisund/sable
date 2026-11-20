@@ -1,11 +1,13 @@
 use std::time::{Duration, Instant};
 
+use glam::Vec3;
 use gpui::{
     Application, Bounds, KeyBinding, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent,
     Pixels, Point, ScrollWheelEvent, Size, WgpuSurfaceHandle, Window, WindowBounds, WindowOptions,
     actions, div, prelude::*, px, rgb, wgpu_surface,
 };
 use sable::Engine;
+use sable_app::controls::OrbitController;
 use sable_assets::scene_ext::SceneExt;
 use sable_core::math::Deg;
 use sable_resources::{Camera, Scene};
@@ -59,11 +61,13 @@ struct AppState {
 struct ViewerApp {
     surface: WgpuSurfaceHandle,
     frame_count: u32,
+    last_frame_time: Instant,
     last_fps_update: Instant,
     display_fps: f64,
     state: AppState,
     engine: Engine,
     size: (u32, u32),
+    controls: OrbitController,
 }
 
 impl ViewerApp {
@@ -91,11 +95,13 @@ impl ViewerApp {
             surface,
             frame_count: 0,
             last_fps_update: Instant::now(),
+            last_frame_time: Instant::now(),
             display_fps: 0.0,
 
             state: AppState::default(),
             engine,
             size,
+            controls: OrbitController::new(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO),
         }
     }
 
@@ -146,16 +152,37 @@ impl ViewerApp {
         }
         changed
     }
+
+    fn update(&mut self) {
+        let Some(scene) = self.engine.scenes.get_active_scene_mut() else {
+            return;
+        };
+
+        let now = Instant::now();
+        let dt = (now - self.last_frame_time).as_secs_f32();
+
+        self.frame_count = self.frame_count.wrapping_add(1);
+        self.last_frame_time = now;
+
+        if let Some((transform, camera)) = scene.query_main_camera_bundle() {
+            self.controls
+                .update(transform, &self.engine.input, camera.fov(), dt);
+        }
+
+        scene.update();
+        self.engine.update();
+    }
 }
 
 impl Render for ViewerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.update();
+
         if let Some((view, (w, h))) = self.surface.back_view_with_size() {
             if self.did_resize((w, h)) {
                 self.engine.resize(w, h);
             }
 
-            // "tick" state here
             self.engine.render_frame(&view);
             drop(view);
 
@@ -163,7 +190,6 @@ impl Render for ViewerApp {
 
             let now = Instant::now();
 
-            self.frame_count = self.frame_count.wrapping_add(1);
             if now.duration_since(self.last_fps_update) >= Duration::from_secs(1) {
                 self.display_fps = self.frame_count as f64;
                 self.frame_count = 0;
@@ -196,28 +222,31 @@ impl Render for ViewerApp {
 }
 
 impl ViewerApp {
-    fn handle_mouse_up(
-        this: &mut Self,
-        _e: &MouseUpEvent,
-        _window: &mut Window,
-        _cx: &mut Context<Self>,
-    ) {
-        this.engine.input.handle_mouse_press(
-            sable_app::MouseButton::Left,
-            sable_app::ButtonState::Released,
-        );
+    fn handle_mouse_up(&mut self, e: &MouseUpEvent, _window: &mut Window, _cx: &mut Context<Self>) {
+        let button = match e.button {
+            MouseButton::Left => sable_app::MouseButton::Left,
+            MouseButton::Right => sable_app::MouseButton::Right,
+            _ => sable_app::MouseButton::Left,
+        };
+        self.engine
+            .input
+            .handle_mouse_press(button, sable_app::ButtonState::Released);
     }
 
     fn handle_any_mouse_down(
-        this: &mut Self,
-        _e: &MouseDownEvent,
+        &mut self,
+        e: &MouseDownEvent,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {
-        this.engine.input.handle_mouse_press(
-            sable_app::MouseButton::Left,
-            sable_app::ButtonState::Pressed,
-        );
+        let button = match e.button {
+            MouseButton::Left => sable_app::MouseButton::Left,
+            MouseButton::Right => sable_app::MouseButton::Right,
+            _ => sable_app::MouseButton::Left,
+        };
+        self.engine
+            .input
+            .handle_mouse_press(button, sable_app::ButtonState::Pressed);
     }
 
     fn handle_mouse_move(
@@ -240,95 +269,15 @@ impl ViewerApp {
 
     fn handle_scroll(
         &mut self,
-        _e: &ScrollWheelEvent,
+        e: &ScrollWheelEvent,
         _window: &mut Window,
         _cx: &mut Context<Self>,
     ) {
-        // let delta = e.delta.pixel_delta(Pixels::from(100.0f32));
+        let delta = e.delta.pixel_delta(Pixels::from(100.0f32));
+        self.engine
+            .input
+            .handle_scroll(delta.x.to_f32(), delta.y.to_f32());
 
         // self.camera.zoom(delta.y.value());
     }
 }
-
-// mod camera {
-//     use glam::{
-//         Mat4, Vec2, Vec3,
-//         camera::rh::{proj, view},
-//     };
-//     use sable::renderer::{CameraUniform, RenderCamera};
-
-//     pub struct OrbitCamera {
-//         position: Vec3,
-//         target: Vec3,
-//         projection: Mat4,
-//         view: Mat4,
-
-//         radius: f32,
-//         yaw: f32,
-//         pitch: f32,
-//         sensitivity: f32,
-//     }
-
-//     impl OrbitCamera {
-//         pub fn new(
-//             position: Vec3,
-//             target: Vec3,
-//             fov_y_radians: f32,
-//             aspect: f32,
-//             near: f32,
-//             far: f32,
-//         ) -> Self {
-//             Self {
-//                 position,
-//                 target,
-//                 projection: proj::directx::perspective(fov_y_radians, aspect, near, far),
-//                 view: view::look_at_mat4(position, target, Vec3::Y),
-
-//                 radius: target.distance(position),
-//                 yaw: 0.0,
-//                 pitch: 0.0,
-//                 sensitivity: 0.005,
-//             }
-//         }
-
-//         pub fn zoom(&mut self, delta: f32) {
-//             self.radius = (self.radius + delta * self.sensitivity).max(0.0);
-//             let dir = Vec3::new(
-//                 self.yaw.sin() * self.pitch.cos(),
-//                 self.pitch.sin(),
-//                 self.yaw.cos() * self.pitch.cos(),
-//             )
-//             .normalize();
-
-//             self.position = self.target - dir * -self.radius;
-//             self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);
-//         }
-
-//         pub fn rotate(&mut self, delta: Vec2) {
-//             self.yaw += delta.x * self.sensitivity;
-//             self.pitch = (self.pitch + delta.y * self.sensitivity).clamp(-1.5, 1.5);
-
-//             let dir = Vec3::new(
-//                 self.yaw.cos() * self.pitch.cos(),
-//                 self.pitch.sin(),
-//                 self.yaw.sin() * self.pitch.cos(),
-//             )
-//             .normalize();
-
-//             self.position = self.target - dir * -self.radius;
-//             self.view = view::look_at_mat4(self.position, self.target, Vec3::Y);
-//         }
-//     }
-
-//     impl RenderCamera for OrbitCamera {
-//         fn extract_uniform(&self) -> CameraUniform {
-//             CameraUniform {
-//                 view: self.view,
-//                 projection: self.projection,
-//                 view_projection: self.projection * self.view,
-//                 position: self.position,
-//                 ..Default::default()
-//             }
-//         }
-//     }
-// }

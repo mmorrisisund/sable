@@ -4908,6 +4908,7 @@ dependencies = [
  "gpui-ce",
  "log",
  "sable_assets",
+ "sable_core",
  "sable_renderer",
  "sable_resources",
  "wgpu",
@@ -4936,6 +4937,7 @@ dependencies = [
  "glam",
  "gltf",
  "image",
+ "log",
  "slotmap",
  "thiserror 2.0.21",
 ]

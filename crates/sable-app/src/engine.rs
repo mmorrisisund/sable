@@ -24,6 +24,12 @@ impl Engine {
         }
     }
 
+    pub fn update(&mut self) {
+        // TODO: Update scene
+
+        self.input.start_frame();
+    }
+
     pub fn render_frame(&mut self, view: &TextureView) -> Option<()> {
         let scene = self.scenes.get_active_scene()?;
         let camera = scene.get_active_camera()?;

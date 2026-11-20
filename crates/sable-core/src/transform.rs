@@ -1,110 +1,115 @@
-use glam::{Mat4, Quat, Vec3};
+use glam::{Affine3A, Mat3, Quat, Vec3};
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Transform {
-    translate: Vec3,
-    rotate: Quat,
-    scale: Vec3,
+    pub position: Vec3,
+    pub rotation: Quat,
+    pub scale: Vec3,
 
-    local_matrix: Mat4,
-    world_matrix: Mat4,
+    pub local_matrix: Affine3A,
+    pub world_matrix: Affine3A,
+    pub prev_world_matrix: Affine3A,
 
-    dirty: bool,
+    // Change tracking
+    last_position: Vec3,
+    last_rotation: Quat,
+    last_scale: Vec3,
+    force_update: bool,
+}
+
+impl Default for Transform {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl Transform {
     pub fn new() -> Self {
         Self {
-            translate: Vec3::ZERO,
-            rotate: Quat::IDENTITY,
+            position: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
             scale: Vec3::ONE,
 
-            local_matrix: Mat4::IDENTITY,
-            world_matrix: Mat4::IDENTITY,
+            local_matrix: Affine3A::IDENTITY,
+            world_matrix: Affine3A::IDENTITY,
 
-            dirty: true,
+            last_position: Vec3::ZERO,
+            last_rotation: Quat::IDENTITY,
+            last_scale: Vec3::ONE,
+            prev_world_matrix: Affine3A::IDENTITY,
+            force_update: true,
         }
     }
 
-    pub fn mark_dirty(&mut self) {
-        self.dirty = true;
-    }
+    /// Check if local matrix needs updating.
+    ///
+    /// Returns true if changed
+    pub fn update_local_matrix(&mut self) -> bool {
+        let changed = self.position != self.last_position
+            || self.rotation != self.last_rotation
+            || self.scale != self.last_scale
+            || self.force_update;
 
-    pub fn set_translate(&mut self, translate: Vec3) {
-        self.translate = translate;
-        self.dirty = true;
-    }
-
-    pub fn set_rotate(&mut self, rotate: Quat) {
-        self.rotate = rotate;
-        self.dirty = true;
-    }
-
-    pub fn set_scale(&mut self, scale: Vec3) {
-        self.scale = scale;
-        self.dirty = true;
-    }
-
-    pub fn with_translation(mut self, translate: Vec3) -> Self {
-        self.translate = translate;
-        self.dirty = true;
-        self
-    }
-
-    pub fn with_rotation(mut self, rotate: Quat) -> Self {
-        self.rotate = rotate;
-        self.dirty = true;
-        self
-    }
-
-    pub fn with_scale(mut self, scale: Vec3) -> Self {
-        self.scale = scale;
-        self.dirty = true;
-        self
-    }
-
-    pub fn set_local_matrix(&mut self, matrix: Mat4) {
-        self.local_matrix = matrix;
-    }
-
-    pub fn set_world_matrix(&mut self, matrix: Mat4) {
-        self.world_matrix = matrix;
-    }
-
-    pub fn local_matrix(&self) -> Mat4 {
-        self.local_matrix
-    }
-
-    pub fn world_matrix(&self) -> Mat4 {
-        self.world_matrix
-    }
-
-    pub fn matrix(&mut self) -> Mat4 {
-        self.update();
-        self.local_matrix
-    }
-
-    pub fn update(&mut self) -> bool {
-        let mut changed = false;
-
-        if self.dirty {
+        if changed {
             self.local_matrix =
-                Mat4::from_scale_rotation_translation(self.scale, self.rotate, self.translate);
-            self.dirty = false;
-            changed = true;
+                Affine3A::from_scale_rotation_translation(self.scale, self.rotation, self.position);
+
+            self.last_position = self.position;
+            self.last_rotation = self.rotation;
+            self.last_scale = self.scale;
+            self.force_update = false;
         }
 
         changed
+    }
+
+    pub fn look_at(&mut self, target: Vec3, up: Vec3) {
+        let forward = (target - self.position).normalize();
+        if forward.cross(up).length_squared() < 1e-4 {
+            return;
+        }
+
+        let right = forward.cross(up).normalize();
+        let up = right.cross(forward).normalize();
+        let rot_mat = Mat3::from_cols(right, up, -forward);
+        self.rotation = Quat::from_mat3(&rot_mat);
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.force_update = true;
+    }
+
+    /// Local coordinate axes based on current rotation
+    ///
+    /// Returns (right, up, forward)
+    pub fn rotation_basis(&self) -> (Vec3, Vec3, Vec3) {
+        let right = self.rotation * Vec3::X;
+        let up = self.rotation * Vec3::Y;
+        let forward = self.rotation * Vec3::Z;
+
+        (right, up, forward)
     }
 }
 
 impl From<gltf::scene::Transform> for Transform {
     fn from(value: gltf::scene::Transform) -> Self {
         let (t, r, s) = value.decomposed();
+        let position = t.into();
+        let rotation = Quat::from_array(r);
+        let scale = s.into();
 
-        Self::new()
-            .with_rotation(Quat::from_array(r))
-            .with_translation(t.into())
-            .with_scale(s.into())
+        Self {
+            position,
+            rotation,
+            scale,
+            local_matrix: Affine3A::from_scale_rotation_translation(scale, rotation, position),
+            world_matrix: Affine3A::IDENTITY,
+
+            last_position: position,
+            last_rotation: rotation,
+            last_scale: scale,
+            prev_world_matrix: Affine3A::IDENTITY,
+            force_update: false,
+        }
     }
 }

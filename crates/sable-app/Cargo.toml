@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 sable_assets.workspace = true
+sable_core.workspace = true
 sable_renderer.workspace = true
 sable_resources.workspace = true
 

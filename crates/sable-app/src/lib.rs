@@ -1,3 +1,4 @@
+pub mod controls;
 mod engine;
 mod input;
 

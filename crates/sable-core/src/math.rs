@@ -1,9 +1,13 @@
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub struct Deg(f32);
 
 impl Deg {
     pub fn new(value: f32) -> Self {
         Self(value)
+    }
+
+    pub fn as_f32(&self) -> f32 {
+        self.0
     }
 }
 
@@ -13,12 +17,16 @@ impl From<Deg> for Rad {
     }
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Clone, Copy)]
 pub struct Rad(f32);
 
 impl Rad {
     pub fn new(value: f32) -> Self {
         Self(value)
+    }
+
+    pub fn as_f32(&self) -> f32 {
+        self.0
     }
 }
 
