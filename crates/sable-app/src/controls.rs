@@ -8,10 +8,10 @@ use crate::{MouseButton, input::InputState};
 #[derive(Debug, Default, Clone, Copy)]
 struct SphericalCoords {
     /// Vertical angle or Zenith. Angle from +Z, in the direction of the reference plane
-    phi: f32,
+    pitch: f32,
 
     /// Horizontal angle or Azimuth.  Angle from +X counter-clockwise
-    theta: f32,
+    heading: f32,
 
     /// Distance from origin
     radius: f32,
@@ -21,7 +21,7 @@ impl SphericalCoords {
     fn from_vec3(v: Vec3) -> Self {
         let radius = v.length();
 
-        let (phi, theta) = if radius == 0.0 {
+        let (pitch, heading) = if radius == 0.0 {
             (0.0, 0.0)
         } else {
             let phi = (v.y / radius).clamp(-1.0, 1.0).acos();
@@ -29,12 +29,16 @@ impl SphericalCoords {
             (phi, theta)
         };
 
-        Self { phi, theta, radius }
+        Self {
+            pitch,
+            heading,
+            radius,
+        }
     }
 
     fn make_safe(&mut self) {
-        const EPS: f32 = 0.000_001;
-        self.phi = self.phi.clamp(EPS, PI - EPS);
+        const EPS: f32 = 0.1;
+        self.pitch = self.pitch.clamp(EPS, PI - EPS);
     }
 }
 
@@ -71,17 +75,17 @@ impl OrbitController {
 
         Self {
             enable_damping: true,
-            damping_factor: 0.5,
+            damping_factor: 0.05,
             zoom_damping_factor: 0.1,
 
             enable_zoom: true,
-            zoom_speed: 5.0,
+            zoom_speed: 1.0,
 
             enable_rotate: true,
             rotate_speed: 0.01,
 
             enable_pan: true,
-            pan_speed: 0.01,
+            pan_speed: 1.0,
 
             min_distance: 0.0,
             max_distance: f32::INFINITY,
@@ -104,8 +108,8 @@ impl OrbitController {
             let rot_x = 2.0 * PI * delta.x / screen_height;
             let rot_y = 2.0 * PI * delta.y / screen_height;
 
-            self.coords_delta.phi -= rot_y * self.rotate_speed;
-            self.coords_delta.theta -= rot_x * self.rotate_speed;
+            self.coords_delta.pitch -= rot_y * self.rotate_speed;
+            self.coords_delta.heading -= rot_x * self.rotate_speed;
         }
 
         let scroll = input.scroll_delta();
@@ -137,14 +141,14 @@ impl OrbitController {
             self.pan_offset += right * pan_x + up * pan_y;
         }
 
-        let time_scale = dt * 10.0;
+        let time_scale = dt; // * 60.0;
 
-        self.coords.phi += self.coords_delta.phi * time_scale;
-        self.coords.phi = self.coords.phi.clamp(
+        self.coords.pitch += self.coords_delta.pitch * time_scale;
+        self.coords.pitch = self.coords.pitch.clamp(
             self.min_vertical_angle.as_f32(),
             self.max_vertical_angle.as_f32(),
         );
-        self.coords.theta += self.coords_delta.theta * time_scale;
+        self.coords.heading += self.coords_delta.heading * time_scale;
         self.coords.make_safe();
 
         if self.enable_damping {
@@ -162,11 +166,11 @@ impl OrbitController {
         self.pan_offset = Vec3::ZERO;
 
         // calculate new transform
-        let sin_phi_radius = self.coords.phi.sin() * self.coords.radius;
+        let sin_pitch_radius = self.coords.pitch.sin() * self.coords.radius;
         let offset = Vec3::new(
-            sin_phi_radius * self.coords.theta.sin(),
-            self.coords.radius * self.coords.phi.cos(),
-            sin_phi_radius * self.coords.theta.cos(),
+            sin_pitch_radius * self.coords.heading.sin(),
+            self.coords.radius * self.coords.pitch.cos(),
+            sin_pitch_radius * self.coords.heading.cos(),
         ); // coordinates scaled by radius
 
         transform.position = self.target + offset;
@@ -175,11 +179,11 @@ impl OrbitController {
         // damping decay
         if self.enable_damping {
             let damping = (1.0 - self.damping_factor).powf(time_scale);
-            self.coords_delta.phi *= damping;
-            self.coords_delta.theta *= damping;
+            self.coords_delta.pitch *= damping;
+            self.coords_delta.heading *= damping;
         } else {
-            self.coords_delta.phi = 0.0;
-            self.coords_delta.theta = 0.0;
+            self.coords_delta.pitch = 0.0;
+            self.coords_delta.heading = 0.0;
         }
     }
 }
