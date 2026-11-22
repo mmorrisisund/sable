@@ -169,7 +169,7 @@ impl ViewerApp {
                 .update(transform, &self.engine.input, camera.fov(), dt);
         }
 
-        scene.update();
+        scene.update(); // TODO: Should this just be in engine update?
         self.engine.update();
     }
 }

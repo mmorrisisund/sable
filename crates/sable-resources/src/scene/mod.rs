@@ -1,6 +1,7 @@
 pub mod camera;
 pub mod manager;
 pub mod node;
+pub mod uniform;
 
 use std::borrow::Cow;
 

@@ -32,12 +32,11 @@ impl Engine {
 
     pub fn render_frame(&mut self, view: &TextureView) -> Option<()> {
         let scene = self.scenes.get_active_scene()?;
-        let camera = scene.get_active_camera()?;
 
-        self.renderer.begin_frame(scene, &self.assets);
-        // frame.render(view);
-        self.renderer.prepare_camera();
-        self.renderer.render(camera, view);
+        let mut frame = self.renderer.begin_frame(scene, &self.assets);
+
+        frame.render(view);
+
         self.renderer.end_frame();
 
         Some(())

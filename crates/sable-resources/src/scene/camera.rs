@@ -1,4 +1,3 @@
-use bytemuck::{Pod, Zeroable};
 use glam::{Affine3A, Mat4, Vec3, camera::rh::proj};
 use sable_core::math::Rad;
 
@@ -74,30 +73,23 @@ impl Camera {
     pub fn fov(&self) -> Rad {
         self.fov
     }
-}
 
-pub trait RenderCamera {
-    fn extract_uniform(&self) -> CameraUniform;
-}
-
-#[repr(C)]
-#[derive(Default, Clone, Copy, Pod, Zeroable)]
-pub struct CameraUniform {
-    pub view: Mat4,
-    pub projection: Mat4,
-    pub view_projection: Mat4,
-    pub position: Vec3,
-    pub _pad0: f32,
-}
-
-impl RenderCamera for Camera {
-    fn extract_uniform(&self) -> CameraUniform {
-        CameraUniform {
+    pub fn as_render_camera(&self) -> RenderCamera {
+        RenderCamera {
             view: self.view_matrix,
             projection: self.projection_matrix,
             view_projection: self.view_projection_matrix,
             position: self.world_matrix.translation.into(),
-            ..Default::default()
         }
     }
+}
+
+/// Lightweight version of camera to use in renderer
+#[repr(C)]
+#[derive(Default, Clone, Copy)]
+pub struct RenderCamera {
+    pub view: Mat4,
+    pub projection: Mat4,
+    pub view_projection: Mat4,
+    pub position: Vec3,
 }

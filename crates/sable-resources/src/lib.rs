@@ -10,6 +10,6 @@ pub use cpu::{
 };
 pub use scene::{
     Scene,
-    camera::{Camera, CameraUniform, RenderCamera},
+    camera::{Camera, RenderCamera},
     manager::SceneManager,
 };

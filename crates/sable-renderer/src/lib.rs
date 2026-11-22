@@ -1,6 +1,7 @@
 pub(crate) mod core;
 pub(crate) mod frame;
 pub(crate) mod gpu;
+pub(crate) mod passes;
 mod renderer;
 pub mod settings;
 

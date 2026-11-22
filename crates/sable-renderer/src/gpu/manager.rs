@@ -5,7 +5,7 @@ use wgpu::{
     BufferBindingType, Device, Queue, RenderPipeline, ShaderModule, ShaderStages, include_wgsl,
 };
 
-use crate::{GpuGeometry, GpuMaterial};
+use crate::{GpuGeometry, GpuMaterial, gpu::binding::FrameBindingContext};
 
 pub struct ResourceManager {
     pub(crate) device: Device,
@@ -15,15 +15,17 @@ pub struct ResourceManager {
     pub material: SlotMap<MaterialHandle, GpuMaterial>,
     pub pipelines: SecondaryMap<GeometryHandle, RenderPipeline>,
 
+    // bindings
+    pub frame_globals: Option<FrameBindingContext>,
+
     // temp stuff - resources
     pub shader: ShaderModule,
-    pub camera_layout: BindGroupLayout,
 }
 
 impl ResourceManager {
     pub fn new(device: Device, queue: Queue) -> Self {
         // let sys_textures = SystemTextures::new(&device, &queue);
-        let shader = device.create_shader_module(include_wgsl!("../shaders/basic.wgsl"));
+        let shader = device.create_shader_module(include_wgsl!("../passes/shaders/basic.wgsl"));
         let camera_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("camera bgl"),
             entries: &[BindGroupLayoutEntry {
@@ -43,10 +45,11 @@ impl ResourceManager {
             queue,
             // sys_textures,
             shader,
-            camera_layout,
             geometry: SlotMap::default(),
             material: SlotMap::default(),
             pipelines: SecondaryMap::default(),
+
+            frame_globals: None,
         }
     }
 }

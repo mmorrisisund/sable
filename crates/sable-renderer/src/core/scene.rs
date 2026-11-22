@@ -16,7 +16,8 @@ pub struct RenderableScene {
 }
 
 impl RenderableScene {
-    pub fn extract(
+    /// Extract renderable items in scene
+    pub fn prepare(
         &mut self,
         scene: &Scene,
         assets: &AssetServer,
@@ -30,16 +31,18 @@ impl RenderableScene {
 
                 let geometry = resources.geometry.get(geo_handle).unwrap();
                 let material = resources.material.get(mat_handle).unwrap();
+                let Some(frame) = resources.frame_globals.as_ref() else {
+                    log::warn!("frame globals not ready");
+                    return;
+                };
 
+                // TODO: Move to command and command generation
                 let pipeline_layout =
                     resources
                         .device
                         .create_pipeline_layout(&PipelineLayoutDescriptor {
                             label: None,
-                            bind_group_layouts: &[
-                                Some(&resources.camera_layout),
-                                Some(material.layout()),
-                            ],
+                            bind_group_layouts: &[Some(&frame.layout), Some(material.layout())],
                             immediate_size: 0,
                         });
 

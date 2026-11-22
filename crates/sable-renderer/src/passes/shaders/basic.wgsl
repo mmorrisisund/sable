@@ -12,14 +12,15 @@ struct VertexOutput {
     @location(2) tex_coords: vec2f,
 }
 
-struct CameraUniform {
+struct FrameUniform {
     view: mat4x4f,
     projection: mat4x4f,
     view_projection: mat4x4f,
-    position: vec4f,
+    position: vec3f,
+    dt: f32,
 }
 
-@group(0) @binding(0) var<uniform> u_camera: CameraUniform;
+@group(0) @binding(0) var<uniform> u_camera: FrameUniform;
 
 
 struct Material {
