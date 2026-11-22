@@ -123,8 +123,16 @@ impl Scene {
         self.cameras.get(handle)
     }
 
+    pub fn get_camera_mut(&mut self, handle: NodeHandle) -> Option<&mut Camera> {
+        self.cameras.get_mut(handle)
+    }
+
     pub fn get_active_camera(&self) -> Option<&Camera> {
         self.get_camera(self.active_camera?)
+    }
+
+    pub fn get_active_camera_mut(&mut self) -> Option<&mut Camera> {
+        self.get_camera_mut(self.active_camera?)
     }
 
     pub fn add_camera(&mut self, camera: Camera) -> NodeHandle {

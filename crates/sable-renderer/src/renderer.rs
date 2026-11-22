@@ -113,23 +113,28 @@ impl Renderer {
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
-        let depth_texture = self.gpu_ctx.device.create_texture(&TextureDescriptor {
-            label: Some("depth_t"),
-            size: Extent3d {
-                width,
-                height,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: TextureFormat::Depth32Float,
-            usage: TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT,
-            view_formats: &[],
-        });
-        let depth_view = depth_texture.create_view(&TextureViewDescriptor::default());
+        if self.config.width != width || self.config.height != height {
+            let depth_texture = self.gpu_ctx.device.create_texture(&TextureDescriptor {
+                label: Some("depth_t"),
+                size: Extent3d {
+                    width,
+                    height,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: TextureFormat::Depth32Float,
+                usage: TextureUsages::COPY_DST | TextureUsages::RENDER_ATTACHMENT,
+                view_formats: &[],
+            });
+            let depth_view = depth_texture.create_view(&TextureViewDescriptor::default());
 
-        self.depth_texture = depth_texture;
-        self.depth_view = depth_view;
+            self.depth_texture = depth_texture;
+            self.depth_view = depth_view;
+
+            self.config.width = width;
+            self.config.height = height;
+        }
     }
 }

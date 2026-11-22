@@ -74,6 +74,11 @@ impl Camera {
         self.fov
     }
 
+    pub fn set_aspect(&mut self, aspect: f32) {
+        self.aspect = aspect;
+        self.update_projection();
+    }
+
     pub fn as_render_camera(&self) -> RenderCamera {
         RenderCamera {
             view: self.view_matrix,

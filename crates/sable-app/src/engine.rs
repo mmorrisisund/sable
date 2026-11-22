@@ -44,5 +44,13 @@ impl Engine {
 
     pub fn resize(&mut self, width: u32, height: u32) {
         self.renderer.resize(width, height);
+
+        if let Some(cam) = self
+            .scenes
+            .get_active_scene_mut()
+            .and_then(|s| s.get_active_camera_mut())
+        {
+            cam.set_aspect(width as f32 / height as f32);
+        }
     }
 }

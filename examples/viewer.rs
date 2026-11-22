@@ -1,4 +1,7 @@
-use std::time::{Duration, Instant};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, Instant},
+};
 
 use glam::Vec3;
 use gpui::{
@@ -66,8 +69,8 @@ struct ViewerApp {
     display_fps: f64,
     state: AppState,
     engine: Engine,
-    size: (u32, u32),
     controls: OrbitController,
+    view_size: Arc<Mutex<(u32, u32)>>,
 }
 
 impl ViewerApp {
@@ -100,13 +103,13 @@ impl ViewerApp {
 
             state: AppState::default(),
             engine,
-            size,
             controls: OrbitController::new(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO),
+            view_size: Arc::new(Mutex::new(size)),
         }
     }
 
     fn details_pane(&mut self) -> impl IntoElement {
-        div().w(px(232.0)).text_color(rgb(0x00aaff)).child(
+        div().w(px(225.0)).text_color(rgb(0x00aaff)).child(
             div()
                 .flex()
                 .flex_col()
@@ -145,31 +148,24 @@ impl ViewerApp {
         )
     }
 
-    fn did_resize(&mut self, size: (u32, u32)) -> bool {
-        let changed = self.size.0 != size.0 || self.size.1 != size.1;
-        if changed {
-            self.size = size;
-        }
-        changed
-    }
-
     fn update(&mut self) {
-        let Some(scene) = self.engine.scenes.get_active_scene_mut() else {
-            return;
-        };
-
         let now = Instant::now();
         let dt = (now - self.last_frame_time).as_secs_f32();
 
         self.frame_count = self.frame_count.wrapping_add(1);
         self.last_frame_time = now;
 
-        if let Some((transform, camera)) = scene.query_main_camera_bundle() {
-            self.controls
-                .update(transform, &self.engine.input, camera.fov(), dt);
-        }
+        if let Some(scene) = self.engine.scenes.get_active_scene_mut() {
+            scene.update(); // TODO: Should this just be in engine update?
 
-        scene.update(); // TODO: Should this just be in engine update?
+            if let Some((transform, camera)) = scene.query_main_camera_bundle() {
+                self.controls
+                    .update(transform, &self.engine.input, camera.fov(), dt);
+            }
+        };
+
+        let size = self.view_size.lock().unwrap();
+        self.engine.resize(size.0, size.1);
         self.engine.update();
     }
 }
@@ -178,11 +174,7 @@ impl Render for ViewerApp {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.update();
 
-        if let Some((view, (w, h))) = self.surface.back_view_with_size() {
-            if self.did_resize((w, h)) {
-                self.engine.resize(w, h);
-            }
-
+        if let Some(view) = self.surface.back_buffer_view() {
             self.engine.render_frame(&view);
             drop(view);
 
@@ -200,6 +192,7 @@ impl Render for ViewerApp {
             window.request_animation_frame();
         }
 
+        let target_size = Arc::new(self.view_size.clone());
         div()
             .size_full()
             .flex()
@@ -216,7 +209,13 @@ impl Render for ViewerApp {
                     .capture_any_mouse_up(cx.listener(Self::handle_mouse_up))
                     .on_mouse_move(cx.listener(Self::handle_mouse_move))
                     .on_scroll_wheel(cx.listener(Self::handle_scroll))
-                    .child(wgpu_surface(self.surface.clone()).absolute().inset_0()),
+                    .child(
+                        wgpu_surface(self.surface.clone())
+                            .absolute()
+                            .defer_resize_until_mouse_up(true)
+                            .on_resize(move |w, h, _| *target_size.lock().unwrap() = (w, h))
+                            .inset_0(),
+                    ),
             )
     }
 }
