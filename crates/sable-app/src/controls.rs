@@ -85,7 +85,7 @@ impl OrbitController {
             rotate_speed: 0.01,
 
             enable_pan: true,
-            pan_speed: 1.0,
+            pan_speed: 0.01,
 
             min_distance: 0.0,
             max_distance: f32::INFINITY,
@@ -108,8 +108,8 @@ impl OrbitController {
             let rot_x = 2.0 * PI * delta.x / screen_height;
             let rot_y = 2.0 * PI * delta.y / screen_height;
 
-            self.coords_delta.pitch -= rot_y * self.rotate_speed;
-            self.coords_delta.heading -= rot_x * self.rotate_speed;
+            self.coords_delta.pitch -= rot_y * self.rotate_speed * dt;
+            self.coords_delta.heading -= rot_x * self.rotate_speed * dt;
         }
 
         let scroll = input.scroll_delta();
@@ -141,7 +141,7 @@ impl OrbitController {
             self.pan_offset += right * pan_x + up * pan_y;
         }
 
-        let time_scale = dt; // * 60.0;
+        let time_scale = dt * 60.0;
 
         self.coords.pitch += self.coords_delta.pitch * time_scale;
         self.coords.pitch = self.coords.pitch.clamp(

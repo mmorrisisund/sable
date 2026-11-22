@@ -1,9 +1,6 @@
 use sable_core::handle::{GeometryHandle, MaterialHandle};
 use slotmap::{SecondaryMap, SlotMap};
-use wgpu::{
-    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
-    BufferBindingType, Device, Queue, RenderPipeline, ShaderModule, ShaderStages, include_wgsl,
-};
+use wgpu::{Device, Queue, RenderPipeline, ShaderModule, include_wgsl};
 
 use crate::{GpuGeometry, GpuMaterial, gpu::binding::FrameBindingContext};
 
@@ -26,19 +23,6 @@ impl ResourceManager {
     pub fn new(device: Device, queue: Queue) -> Self {
         // let sys_textures = SystemTextures::new(&device, &queue);
         let shader = device.create_shader_module(include_wgsl!("../passes/shaders/basic.wgsl"));
-        let camera_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-            label: Some("camera bgl"),
-            entries: &[BindGroupLayoutEntry {
-                binding: 0,
-                visibility: ShaderStages::VERTEX_FRAGMENT,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
 
         Self {
             device,

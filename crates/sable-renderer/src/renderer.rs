@@ -1,15 +1,14 @@
 use gpui::WgpuSurfaceHandle;
 use sable_assets::AssetServer;
-use sable_resources::{RenderCamera, Scene};
+use sable_resources::Scene;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferUsages,
     Extent3d, Texture, TextureDescriptor, TextureFormat, TextureUsages, TextureView,
     TextureViewDescriptor,
 };
 
 use crate::{
     ResourceManager,
-    core::{commands::render::RenderCommands, scene::RenderableItem},
+    core::commands::render::RenderCommands,
     frame::{Frame, FrameContext, FrameManager},
     gpu::context::WgpuContext,
     passes::basic::BasicPass,
