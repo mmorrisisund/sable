@@ -1,16 +1,18 @@
 pub mod camera;
 pub mod manager;
 pub mod node;
+pub mod query;
 pub mod uniform;
 
 use std::borrow::Cow;
 
 use glam::Affine3A;
 use sable_core::{handle::NodeHandle, transform::Transform};
-use slotmap::{SecondaryMap, SlotMap, SparseSecondaryMap};
+use slotmap::{SecondaryMap, SlotMap, SparseSecondaryMap, sparse_secondary::Iter};
 
 use crate::{
-    Mesh,
+    Mesh, Query,
+    geometry::BoundingBox,
     scene::{camera::Camera, node::Node},
 };
 
@@ -103,6 +105,57 @@ impl Scene {
     pub fn push_root(&mut self, handle: NodeHandle) {
         self.roots.push(handle);
     }
+
+    /// Get the full bounding box of node and it's children
+    pub fn get_bounding_box(&self, handle: NodeHandle, query: &impl Query) -> Option<BoundingBox> {
+        //- get initial bbox of node
+        let mut combined = self.get_local_bounding_box(handle, query);
+        //- get node
+        let node = self.nodes.get(handle)?;
+
+        //- for all children
+        for &child in &node.children {
+            //  - get bbox of child
+            if let Some(child_bbox) = self.get_local_bounding_box(child, query) {
+                combined = match combined {
+                    //  - if initial bbox exists union with child
+                    Some(prior) => Some(prior.union(&child_bbox)),
+                    //  - else initial becomes child
+                    None => Some(child_bbox),
+                }
+            }
+        }
+
+        //- return initial (combined)
+        combined
+    }
+
+    /// Get the bounding box of a single node on its own
+    pub fn get_local_bounding_box(
+        &self,
+        handle: NodeHandle,
+        query: &impl Query,
+    ) -> Option<BoundingBox> {
+        //  ## Get BBox of One Node
+        //   - get node if possible
+        let node = self.nodes.get(handle)?;
+        if !node.visible {
+            return None;
+        }
+
+        //   - get mesh if possible
+        let mesh = self.meshes.get(handle)?;
+        if !mesh.visible {
+            return None;
+        }
+
+        //   - get local bbox of mesh's geometry
+        let bbox = query.get_geometry_bounding_box(mesh.geometry)?;
+        //   - transform local bbox with node's world matrix
+        let bbox = bbox.transform(&node.transform.world_matrix);
+        //   - return Some(local_bbox)
+        Some(bbox)
+    }
 }
 
 // Component Management API
@@ -111,12 +164,16 @@ impl Scene {
         self.meshes.get(handle)
     }
 
-    pub fn set_name(&mut self, handle: NodeHandle, name: &str) {
-        self.names.insert(handle, Cow::Owned(name.to_string()));
-    }
-
     pub fn set_mesh(&mut self, handle: NodeHandle, mesh: Mesh) {
         self.meshes.insert(handle, mesh);
+    }
+
+    pub fn meshes(&self) -> Iter<'_, NodeHandle, Mesh> {
+        self.meshes.iter()
+    }
+
+    pub fn set_name(&mut self, handle: NodeHandle, name: &str) {
+        self.names.insert(handle, Cow::Owned(name.to_string()));
     }
 
     pub fn get_camera(&self, handle: NodeHandle) -> Option<&Camera> {

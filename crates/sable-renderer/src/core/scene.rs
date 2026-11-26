@@ -23,6 +23,22 @@ impl RenderableScene {
         assets: &AssetServer,
         resources: &mut ResourceManager,
     ) {
+        for (node_handle, mesh) in scene.meshes() {
+            if !mesh.visible {
+                continue;
+            }
+
+            let Some(node) = scene.get_node(node_handle) else {
+                continue;
+            };
+
+            if !node.visible {
+                continue;
+            }
+        }
+
+        // existing
+        // ================================================
         for node in scene.nodes() {
             if let Some(mesh) = scene.get_mesh(node) {
                 let mesh_geo = assets.geometry.get(mesh.geometry).unwrap();

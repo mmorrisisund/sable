@@ -4,7 +4,10 @@ use sable_core::{
     error::Result,
     handle::{GeometryHandle, ImageHandle, MaterialHandle, PrefabHandle, TextureHandle},
 };
-use sable_resources::{Geometry, Image, image::ColorSpace, material::Material, texture::Texture};
+use sable_resources::{
+    Geometry, Image, Query, geometry::BoundingBox, image::ColorSpace, material::Material,
+    texture::Texture,
+};
 
 use crate::{container::Container, loader::GltfLoader, prefab::Prefab};
 
@@ -64,5 +67,11 @@ impl AssetServer {
 impl Default for AssetServer {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Query for AssetServer {
+    fn get_geometry_bounding_box(&self, handle: GeometryHandle) -> Option<BoundingBox> {
+        self.geometry.get(handle).map(|g| g.bounding_box())
     }
 }

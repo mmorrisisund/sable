@@ -24,6 +24,12 @@ impl SceneExt for Scene {
                 self.set_mesh(handle, mesh.clone());
             }
 
+            if let Some(node) = self.get_node_mut(handle) {
+                node.transform = p_node.transform.clone();
+            }
+
+            self.get_node_mut(handle).unwrap().transform = p_node.transform.clone();
+
             node_map.push(handle);
         }
 

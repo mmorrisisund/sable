@@ -4,4 +4,6 @@ use sable_core::handle::{GeometryHandle, MaterialHandle};
 pub struct Mesh {
     pub geometry: GeometryHandle,
     pub material: MaterialHandle,
+
+    pub visible: bool,
 }

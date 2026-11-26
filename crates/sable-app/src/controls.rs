@@ -1,7 +1,8 @@
 use std::f32::consts::PI;
 
-use glam::Vec3;
+use glam::{Vec3, vec3};
 use sable_core::{math::Rad, transform::Transform};
+use sable_resources::geometry::BoundingBox;
 
 use crate::{MouseButton, input::InputState};
 
@@ -185,5 +186,24 @@ impl OrbitController {
             self.coords_delta.pitch = 0.0;
             self.coords_delta.heading = 0.0;
         }
+    }
+
+    pub fn fit(&mut self, bbox: BoundingBox) {
+        let center = bbox.center();
+        let radius = bbox.size().length() * 0.5;
+
+        self.set_target(center);
+        self.set_position(center + vec3(0.0, 0.0, radius * 3.5));
+    }
+
+    pub fn set_target(&mut self, target: Vec3) {
+        self.target = target;
+    }
+
+    pub fn set_position(&mut self, position: Vec3) {
+        let offset = position - self.target;
+
+        self.coords = SphericalCoords::from_vec3(offset);
+        self.target_radius = self.coords.radius;
     }
 }

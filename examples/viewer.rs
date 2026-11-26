@@ -81,16 +81,23 @@ impl ViewerApp {
         let size = surface.size();
         let mut engine = Engine::new(surface.clone());
 
+        let mut scene = Scene::new();
+
         let prefab_handle = engine.assets.load_model(&model_path).unwrap();
         let prefab = engine.assets.prefab.get(prefab_handle).unwrap();
-
-        let mut scene = Scene::new();
+        let root = scene.instantiate_prefab(&prefab);
 
         let camera =
             Camera::new_perspective(Deg::new(45.0), DEFAULT_WIDTH / DEFAULT_HEIGHT, 0.1, 1000.0);
-
         scene.add_active_camera(camera);
-        scene.instantiate_prefab(&prefab);
+
+        let mut controls = OrbitController::new(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO);
+        if let Some(bbox) = scene.get_bounding_box(root, &engine.assets)
+            && let Some((transform, camera)) = scene.query_main_camera_bundle()
+        {
+            controls.fit(bbox);
+            controls.update(transform, &engine.input, camera.fov(), 0.1);
+        }
 
         engine.scenes.add_active_scene(scene);
 
@@ -103,7 +110,7 @@ impl ViewerApp {
 
             state: AppState::default(),
             engine,
-            controls: OrbitController::new(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO),
+            controls,
             view_size: Arc::new(Mutex::new(size)),
         }
     }
@@ -192,7 +199,7 @@ impl Render for ViewerApp {
             window.request_animation_frame();
         }
 
-        let target_size = Arc::new(self.view_size.clone());
+        let target_size = self.view_size.clone();
         div()
             .size_full()
             .flex()

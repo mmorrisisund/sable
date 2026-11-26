@@ -211,7 +211,11 @@ impl GltfLoader {
             self.default_material
         };
 
-        Mesh { geometry, material }
+        Mesh {
+            geometry,
+            material,
+            visible: true,
+        }
     }
 
     fn build_geometry(&mut self, primitive: &Primitive) -> GeometryHandle {

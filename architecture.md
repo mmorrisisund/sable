@@ -41,6 +41,7 @@ Scene Extraction
  - Each active mesh
    - Prepare Mesh (geo/mat) to get mesh bg
    - Create Renderable (active mesh + geo/mat resources, few other things)
+     - world mat, world aabb, mesh bg, geo/mat handles (not gpu versions)
 
 Prepare Mesh
  - Creates BindGroup 2

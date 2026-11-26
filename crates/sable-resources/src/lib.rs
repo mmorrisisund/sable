@@ -12,4 +12,5 @@ pub use scene::{
     Scene,
     camera::{Camera, RenderCamera},
     manager::SceneManager,
+    query::Query,
 };
